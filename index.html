@@ -32,8 +32,8 @@
 const { useState, useEffect, useMemo, useRef } = React;
 
 // ---------- Tokens ----------
-const GRAY = '#3A3A3D';
-const BURGUNDY = '#7A1F2B';
+const GRAY = '#7A1F2B';
+const BURGUNDY = '#3A3A3D';
 const WHITE = '#FFFFFF';
 const TEXT = '#1F2024';
 const MUTED = '#6B7280';
@@ -80,7 +80,7 @@ const effective = (f) => {
 };
 
 // ---------- UI atoms ----------
-function RowStat({ label, emoji, value, target, unit, kind }) {
+function RowStat({ label, emoji, value, target, unit, kind, note }) {
   const color = statColor(value, target, kind);
   const pct = Math.min(100, (value / target) * 100);
   return (
@@ -90,7 +90,7 @@ function RowStat({ label, emoji, value, target, unit, kind }) {
         <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 8.5, letterSpacing: '0.03em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
       </div>
       <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 19, fontWeight: 700, color, lineHeight: 1 }}>{Math.round(value)}<span style={{ fontSize: 10, color: MUTED, fontWeight: 500 }}>{unit}</span></div>
-      <div style={{ fontSize: 9.5, color: MUTED, marginTop: 2 }}>/ {target}{unit}</div>
+      <div style={{ fontSize: 9.5, color: MUTED, marginTop: 2 }}>/ {target}{unit}{note ? ` · ${note}` : ''}</div>
       <div style={{ height: 4, background: TRACK_BG, borderRadius: 2, marginTop: 6, overflow: 'hidden' }}>
         <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 2 }} />
       </div>
@@ -203,6 +203,8 @@ function KetoTrack() {
     const e = effective(f);
     return { calories: acc.calories + e.calories, protein: acc.protein + e.protein, netCarbs: acc.netCarbs + Math.max(0, e.carbs - e.fiber), fat: acc.fat + e.fat };
   }, { calories: 0, protein: 0, netCarbs: 0, fat: 0 });
+  const caloriesBurned = (dayData.workouts || []).reduce((sum, w) => sum + (w.activeCalories || 0), 0);
+  const netCalories = Math.max(0, totals.calories - caloriesBurned);
 
   // record / bump a food's frequency in Your Regulars (unified across meals, no fuzzy matching)
   const recordCommonFood = (food, snapshot) => {
@@ -376,7 +378,7 @@ function KetoTrack() {
         <div style={{ display: 'flex', gap: 6 }}>
           <RowStat label="Protein" emoji="🥩" value={totals.protein} target={targets.protein} unit="g" kind="floor" />
           <RowStat label="Net Carbs" emoji="🌾" value={totals.netCarbs} target={targets.netCarbs} unit="g" kind="ceiling" />
-          <RowStat label="Calories" emoji="🔥" value={totals.calories} target={targets.calories} unit="" kind="ceiling" />
+          <RowStat label="Calories" emoji="🔥" value={netCalories} target={targets.calories} unit="" kind="ceiling" note={caloriesBurned > 0 ? `-${Math.round(caloriesBurned)} burned` : null} />
           <RowStat label="Fat" emoji="💧" value={totals.fat} target={targets.fat} unit="g" kind="floor" />
         </div>
 
@@ -431,7 +433,7 @@ function KetoTrack() {
         <div className="card" style={{ marginBottom: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>Training</span>
-            <button className="pill" onClick={() => setShowAddWorkout(true)}>+ Add</button>
+            <button className="pill" onClick={() => setShowAddWorkout(true)}>+ Log</button>
           </div>
           {dayData.workouts.length === 0 ? <div style={{ color: MUTED, fontSize: 13 }}>No sessions logged.</div> : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -616,7 +618,7 @@ function MealSection({ meal, foods, expanded, onToggleExpand, onAdd, onAiAdd, on
         <>
           <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
             <button onClick={onAdd} style={{ background: MANUAL_GRAY, border: 'none', borderRadius: 8, padding: '7px 12px', color: WHITE, fontSize: 12.5, fontWeight: 700 }}>Manual+</button>
-            <button onClick={onAiAdd} style={{ background: RED, border: 'none', borderRadius: 8, padding: '7px 12px', color: WHITE, fontSize: 12.5, fontWeight: 700 }}>Smart+</button>
+            <button onClick={onAiAdd} style={{ background: GRAY, border: 'none', borderRadius: 8, padding: '7px 12px', color: WHITE, fontSize: 12.5, fontWeight: 700 }}>Smart+</button>
           </div>
 
           {foods.length === 0 ? (
