@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <title>KetoTrack</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 fill=%22%233A3A3D%22/><polygon points=%2250,25 75,75 25,75%22 fill=%22%237A1F2B%22/></svg>" />
-<link rel="apple-touch-icon" href="/icon.png" />
+<link rel="apple-touch-icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAIAAACyr5FlAAAEQklEQVR4nO3ZQW7bMBCFYafoCbrtTQIE6NF7mW57hi5YpCmcN5YsiXwz83/rIqXon0NDfnl9fbsBn/myegHwRRyQiAMScUAiDkjEAYk4IBEHJOKARByQiAMScUAiDkjEAYk4IBEHJOKARByQiAMScUAiDkjEAYk4IBEHJOKARByQiAMScUAiDkjEAYk4IBEHJOKARByQiAMScUAiDkjE8Z8fv36vXoIR4vhnlEEf74gDEnH89XFgMDwG4oBEHLfbZ6OC4XEjjpvugD6IA1L3OOLx0Hx4tI5jy2ffuY/WcSDWN47tI6Ht8OgbBx5qGsfeYdBzeHSM47lPumEfHePARu3iODIAug2PdnHEfn7/tnoJRnrFER/9UUbcR6vh0SiOsz7XPn00iiP2cWBwuQxd4jj3uDcZHi3iePhZ3o+Kh8OjQx8t4oipDrhc6sdx3REvPzzqxxGLx0Pz4VE8ji0vNmKdX3tUjmPOJ1e4j8pxxLZfGW0vl7JxzDzQVYdHzTieeLFx8N+X7KNmHLHnromGl0vBOFYd4nrDo2AcsSMDoNvwqBbH8RcbsVavPUrF4fDZOKzhLKXiiJ11KfS5XOrE4XNkfVZyUJ04Yuce9ybDo0gcV38P3fs3awyPCnF4fhKeq9qlQhyx666A8pdL+jicD6jz2rbIHcfpP7DtVfsHudxxxOaM/cKXS+I4shzKLOu8lziO2MwDXXV4ZI1j/ouNWMnXHinjyLjXGdecMo7YqiFf73LJF0fGIzikW3m+OGJrj2+x4ZEsDrfvoXvXkGt4ZIoj184qiZ4iUxwxh7Ex+KzkoDRxJDpwD2V5lhxxLP+Bba8aP8jliCPmVsbguapdEsSR4pA9wf+5EsQRcz6gzmvbwj0O/xcbsdSvPazjMN+7Uzg/o3UcMf+xMWRZ5z3fOJyP1Llsn9Q3jliu45hrte9M48j+PfRexm+mjnF47tTVDJ/aMY5YxrExpFu5XRyGB2gat2f3iiPdD2x75fpBziuOWPYyhkRPYRSH1aFZyGcfjOKIJTpwD2V5Fpc46r3YiKV47WERh8leWHHYE4s4YvXGxuD/XOvjcDginpbvzOI4yr/YiJm/9lg/OQK1yxicn3FlHMvHZgoLd8l3cjgfqXPZPumyOLq92Ih5vvZYEwcXyl5LdszxWuk2NgbDp14QB2PjOfP3zW5yGB6gadye/eX19W3m/8fYOGhmQFMnB2UcN3MP7a4V+JgXB2PjLNN2clIclHGuOfvJtQJpRhyMjStM2FUmB6TL42BsXOfqvf166V+/+b31w3ZcK5CIAxJxQCIOSMQBiTggEQck4oBEHJCIAxJxQCIOSMQBiTggEQck4oBEHJCIAxJxQCIOSMQBiTggEQck4oBEHJCIAxJxQCIOSMQBiTggEQck4oBEHJCIAxJxQCIOSMQBiTgg/QGMQkQBonbfXgAAAABJRU5ErkJggg==" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="theme-color" content="#3A3A3D" />
@@ -41,6 +41,7 @@ const BORDER = '#E9E7ED';
 const BLUE = '#2563EB';
 const RED = '#E11D2E';
 const TRACK_BG = '#F1EFF1';
+const MANUAL_GRAY = '#5F6368';
 
 const MEALS = [
   { key: 'breakfast', label: 'Breakfast', emoji: '☕' },
@@ -49,7 +50,7 @@ const MEALS = [
   { key: 'snacks', label: 'Snacks', emoji: '🍪' },
 ];
 
-const DEFAULT_TARGETS = { calories: 1800, protein: 80, netCarbs: 60, fat: 80, water: 100 };
+const DEFAULT_TARGETS = { calories: 1800, protein: 90, netCarbs: 25, fat: 150, water: 100 };
 
 const load = (key, fallback) => {
   try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
@@ -79,36 +80,19 @@ const effective = (f) => {
 };
 
 // ---------- UI atoms ----------
-function BigStat({ label, value, target, unit, kind }) {
+function RowStat({ label, emoji, value, target, unit, kind }) {
   const color = statColor(value, target, kind);
   const pct = Math.min(100, (value / target) * 100);
   return (
-    <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 14, padding: 20, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-      <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.06em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600, marginBottom: 8 }}>{label}</div>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-        <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 40, fontWeight: 700, color }}>{Math.round(value)}{unit}</span>
-        <span style={{ fontSize: 14, color: MUTED }}>/ {target}{unit}</span>
+    <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 12, padding: '10px 8px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', flex: 1, minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6 }}>
+        <span style={{ fontSize: 11 }}>{emoji}</span>
+        <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 8.5, letterSpacing: '0.03em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
       </div>
-      <div style={{ height: 8, background: TRACK_BG, borderRadius: 4, marginTop: 12, overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 4, transition: 'width 0.3s ease' }} />
-      </div>
-    </div>
-  );
-}
-
-function SmallStat({ label, emoji, value, target, unit, kind }) {
-  const color = statColor(value, target, kind);
-  const pct = Math.min(100, (value / target) * 100);
-  return (
-    <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 14, padding: '18px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
-        <span style={{ fontSize: 15 }}>{emoji}</span>
-        <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 12, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>{label}</span>
-      </div>
-      <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 32, fontWeight: 700, color }}>{Math.round(value)}<span style={{ fontSize: 14, color: MUTED, fontWeight: 500 }}>{unit}</span></div>
-      <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>/ {target}{unit}</div>
-      <div style={{ height: 6, background: TRACK_BG, borderRadius: 3, marginTop: 10, overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 3 }} />
+      <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 19, fontWeight: 700, color, lineHeight: 1 }}>{Math.round(value)}<span style={{ fontSize: 10, color: MUTED, fontWeight: 500 }}>{unit}</span></div>
+      <div style={{ fontSize: 9.5, color: MUTED, marginTop: 2 }}>/ {target}{unit}</div>
+      <div style={{ height: 4, background: TRACK_BG, borderRadius: 2, marginTop: 6, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 2 }} />
       </div>
     </div>
   );
@@ -189,6 +173,8 @@ function KetoTrack() {
   const [showHistory, setShowHistory] = useState(false);
   const [showHome, setShowHome] = useState(false);
   const [popup, setPopup] = useState(null);
+  const [pickMealFor, setPickMealFor] = useState(null); // Your Regulars item awaiting meal choice
+  const [editRegular, setEditRegular] = useState(null);
 
   useEffect(() => {
     setProfile(load('kt-profile', null));
@@ -216,22 +202,22 @@ function KetoTrack() {
     return { calories: acc.calories + e.calories, protein: acc.protein + e.protein, netCarbs: acc.netCarbs + Math.max(0, e.carbs - e.fiber), fat: acc.fat + e.fat };
   }, { calories: 0, protein: 0, netCarbs: 0, fat: 0 });
 
-  // record / bump a food's frequency in the auto-saved Common Foods list
-  const recordCommonFood = (mealKey, food, commonFoodsSnapshot) => {
+  // record / bump a food's frequency in Your Regulars (unified across meals, no fuzzy matching)
+  const recordCommonFood = (food, snapshot) => {
     const key = food.name.trim().toLowerCase();
-    const idx = commonFoodsSnapshot.findIndex(cf => cf.mealType === mealKey && cf.name.trim().toLowerCase() === key);
+    const idx = snapshot.findIndex(cf => cf.name.trim().toLowerCase() === key);
     if (idx >= 0) {
-      const next = [...commonFoodsSnapshot];
+      const next = [...snapshot];
       next[idx] = { ...next[idx], count: (next[idx].count || 1) + 1 };
       return next;
     }
-    return [...commonFoodsSnapshot, { id: Date.now() + Math.random(), name: food.name, protein: food.protein, carbs: food.carbs, fiber: food.fiber, fat: food.fat, calories: food.calories, mealType: mealKey, count: 1 }];
+    return [...snapshot, { id: Date.now() + Math.random(), name: food.name, protein: food.protein, carbs: food.carbs, fiber: food.fiber, fat: food.fat, calories: food.calories, count: 1, pinned: false }];
   };
 
   const addFood = (mealKey, food) => {
     const next = { ...dayData, meals: { ...dayData.meals, [mealKey]: [...dayData.meals[mealKey], { ...food, id: Date.now() + Math.random(), percent: 100 }] } };
     persistDay(next);
-    persistCommon(recordCommonFood(mealKey, food, commonFoods));
+    persistCommon(recordCommonFood(food, commonFoods));
     const e = effective({ ...food, percent: 100 });
     const netC = Math.max(0, e.carbs - e.fiber);
     const carbThird = targets.netCarbs / 3, proteinThird = targets.protein / 3;
@@ -243,7 +229,7 @@ function KetoTrack() {
     const next = { ...dayData, meals: { ...dayData.meals, [mealKey]: [...dayData.meals[mealKey], ...stamped] } };
     persistDay(next);
     let cf = commonFoods;
-    foods.forEach(f => { cf = recordCommonFood(mealKey, f, cf); });
+    foods.forEach(f => { cf = recordCommonFood(f, cf); });
     persistCommon(cf);
     const totals2 = foods.reduce((acc, f) => {
       const e = effective({ ...f, percent: 100 });
@@ -255,11 +241,15 @@ function KetoTrack() {
 
   const updateFood = (mealKey, id, updates) => persistDay({ ...dayData, meals: { ...dayData.meals, [mealKey]: dayData.meals[mealKey].map(f => f.id === id ? { ...f, ...updates } : f) } });
   const removeFood = (mealKey, id) => persistDay({ ...dayData, meals: { ...dayData.meals, [mealKey]: dayData.meals[mealKey].filter(f => f.id !== id) } });
-  const toggleCommonFood = (mealKey, cf) => {
-    const existing = dayData.meals[mealKey].find(f => f.sourceId === cf.id);
-    if (existing) removeFood(mealKey, existing.id);
-    else addFood(mealKey, { name: cf.name, protein: cf.protein, carbs: cf.carbs, fiber: cf.fiber, fat: cf.fat, calories: cf.calories, sourceId: cf.id });
+
+  const logRegularToMeal = (regular, mealKey) => {
+    addFood(mealKey, { name: regular.name, protein: regular.protein, carbs: regular.carbs, fiber: regular.fiber, fat: regular.fat, calories: regular.calories });
+    setPickMealFor(null);
   };
+  const togglePinRegular = (id) => persistCommon(commonFoods.map(cf => cf.id === id ? { ...cf, pinned: !cf.pinned } : cf));
+  const deleteRegular = (id) => persistCommon(commonFoods.filter(cf => cf.id !== id));
+  const updateRegular = (id, updates) => persistCommon(commonFoods.map(cf => cf.id === id ? { ...cf, ...updates } : cf));
+
   const addWorkout = (w) => persistDay({ ...dayData, workouts: [...dayData.workouts, { ...w, id: Date.now() }] });
   const removeWorkout = (id) => persistDay({ ...dayData, workouts: dayData.workouts.filter(w => w.id !== id) });
   const setWater = (n) => persistDay({ ...dayData, water: n === dayData.water ? n - 20 : n });
@@ -313,6 +303,8 @@ function KetoTrack() {
     if (p.currentWeight) persistWeight([{ date: todayISO(), weight: p.currentWeight, note: '' }]);
   }} />;
 
+  const regularsSorted = [...commonFoods].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || (b.count || 1) - (a.count || 1));
+
   return (
     <div style={{ background: GRAY, minHeight: '100vh', fontFamily: "'Inter', sans-serif", color: TEXT, paddingBottom: 40 }}>
       <div style={{ background: BURGUNDY, padding: '22px 20px 18px' }}>
@@ -321,12 +313,7 @@ function KetoTrack() {
             <div style={{ width: 0, height: 0, borderLeft: '13px solid transparent', borderRight: '13px solid transparent', borderBottom: `21px solid ${GRAY}` }} />
             <h1 style={{ fontFamily: "'Oswald', sans-serif", fontSize: 22, fontWeight: 700, margin: 0, color: WHITE, letterSpacing: '-0.01em' }}>KetoTrack</h1>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button onClick={() => setShowSettings(true)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 8, padding: '8px 10px', color: WHITE, fontSize: 15 }}>⚙</button>
-            <button onClick={share} style={{ background: 'rgba(255,255,255,0.18)', border: 'none', borderRadius: 20, padding: '8px 13px', color: WHITE, fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 15 }}>⤴</span> Share
-            </button>
-          </div>
+          <button onClick={() => setShowSettings(true)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 8, padding: '8px 10px', color: WHITE, fontSize: 15 }}>⚙</button>
         </div>
 
         <div style={{ maxWidth: 480, margin: '18px auto 0', display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -346,6 +333,11 @@ function KetoTrack() {
           </div>
           <button onClick={() => setWeekAnchor(iso(addDays(startOfWeek(weekAnchor), 7)))} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', padding: 2, fontSize: 16 }}>›</button>
         </div>
+
+        <button onClick={share} style={{ display: 'block', width: '100%', maxWidth: 480, margin: '16px auto 0', background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: 10, padding: '11px 14px', textAlign: 'left', fontSize: 12.5 }}>
+          <span style={{ color: 'rgba(255,255,255,0.75)' }}>Know someone who'd like this?  </span>
+          <span style={{ color: WHITE, fontWeight: 700 }}>Share KetoTrack →</span>
+        </button>
       </div>
 
       <div style={{ maxWidth: 480, margin: '0 auto', padding: '20px 20px 0', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -381,11 +373,11 @@ function KetoTrack() {
 
         <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 15, fontWeight: 600, color: WHITE }}>{fmtHeader(selectedDate)}</div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <SmallStat label="Protein" emoji="🥩" value={totals.protein} target={targets.protein} unit="g" kind="floor" />
-          <SmallStat label="Net Carbs" emoji="🌾" value={totals.netCarbs} target={targets.netCarbs} unit="g" kind="ceiling" />
-          <SmallStat label="Calories" emoji="🔥" value={totals.calories} target={targets.calories} unit="" kind="ceiling" />
-          <SmallStat label="Fat" emoji="💧" value={totals.fat} target={targets.fat} unit="g" kind="floor" />
+        <div style={{ display: 'flex', gap: 6 }}>
+          <RowStat label="Protein" emoji="🥩" value={totals.protein} target={targets.protein} unit="g" kind="floor" />
+          <RowStat label="Net Carbs" emoji="🌾" value={totals.netCarbs} target={targets.netCarbs} unit="g" kind="ceiling" />
+          <RowStat label="Calories" emoji="🔥" value={totals.calories} target={targets.calories} unit="" kind="ceiling" />
+          <RowStat label="Fat" emoji="💧" value={totals.fat} target={targets.fat} unit="g" kind="floor" />
         </div>
 
         <div className="card">
@@ -397,40 +389,41 @@ function KetoTrack() {
           </div>
         </div>
 
+        <RegularsSection regulars={regularsSorted} onPick={(r) => setPickMealFor(r)} onEdit={(r) => setEditRegular(r)} onDelete={deleteRegular} onTogglePin={togglePinRegular} />
+
         {MEALS.map(m => (
-          <MealSection key={m.key} meal={m} foods={dayData.meals[m.key] || []} commonFoods={commonFoods.filter(cf => cf.mealType === m.key).sort((a, b) => (b.count || 1) - (a.count || 1))}
+          <MealSection key={m.key} meal={m} foods={dayData.meals[m.key] || []}
             onAdd={() => setAddFoodMeal(m.key)} onAiAdd={() => setAiMeal(m.key)} onRemove={(id) => removeFood(m.key, id)}
-            onEdit={(food) => setEditFood({ mealKey: m.key, food })} onToggleCommon={(cf) => toggleCommonFood(m.key, cf)} />
+            onEdit={(food) => setEditFood({ mealKey: m.key, food })} />
         ))}
 
-        <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>Weight Trend</span>
-            <button className="pill" onClick={() => setShowWeightForm(true)}>+ Log</button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <div className="card" style={{ flex: 1, padding: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: "'Oswald', sans-serif", fontSize: 11, letterSpacing: '0.03em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>♥ BP</span>
+              <button className="pill" style={{ padding: '5px 9px', fontSize: 11 }} onClick={() => setShowBpForm(true)}>+ Log</button>
+            </div>
+            {latestBp ? (
+              <div><span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 20, fontWeight: 700 }}>{latestBp.systolic}/{latestBp.diastolic}</span><div style={{ fontSize: 10.5, color: MUTED, marginTop: 2 }}>{latestBp.date}</div></div>
+            ) : <div style={{ color: MUTED, fontSize: 12 }}>Not logged yet.</div>}
           </div>
-          {latestWeight ? (
-            <>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
-                <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 30, fontWeight: 700 }}>{latestWeight}</span>
-                <span style={{ color: MUTED, fontSize: 13 }}>lbs · goal {goalWeight}</span>
-                {startWeight && startWeight !== latestWeight && <span style={{ color: '#16A34A', fontSize: 13, marginLeft: 'auto' }}>📉 {(startWeight - latestWeight).toFixed(1)}</span>}
+
+          <div className="card" style={{ flex: 1, padding: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 11, letterSpacing: '0.03em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>Weight</span>
+              <button className="pill" style={{ padding: '5px 9px', fontSize: 11 }} onClick={() => setShowWeightForm(true)}>+ Log</button>
+            </div>
+            {latestWeight ? (
+              <div>
+                <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 20, fontWeight: 700 }}>{latestWeight}</span>
+                <span style={{ color: MUTED, fontSize: 11 }}> lbs · goal {goalWeight}</span>
+                {startWeight && startWeight !== latestWeight && <div style={{ color: '#16A34A', fontSize: 11, marginTop: 2 }}>📉 {(startWeight - latestWeight).toFixed(1)}</div>}
               </div>
-              <WeightChart data={weightLog} goal={goalWeight} />
-            </>
-          ) : <div style={{ color: MUTED, fontSize: 13 }}>No weigh-ins logged yet.</div>}
-        </div>
-
-        <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>♥ Blood Pressure</span>
-            <button className="pill" onClick={() => setShowBpForm(true)}>+ Log</button>
+            ) : <div style={{ color: MUTED, fontSize: 12 }}>No weigh-ins yet.</div>}
           </div>
-          {latestBp ? (
-            <div><span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 26, fontWeight: 700 }}>{latestBp.systolic}/{latestBp.diastolic}</span><span style={{ fontSize: 12, color: MUTED, marginLeft: 8 }}>last logged {latestBp.date}</span></div>
-          ) : <div style={{ color: MUTED, fontSize: 13 }}>Not logged yet.</div>}
         </div>
 
-        <div className="card">
+        <div className="card" style={{ marginBottom: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>Training</span>
             <button className="pill" onClick={() => setShowAddWorkout(true)}>+ Add</button>
@@ -456,13 +449,6 @@ function KetoTrack() {
             </div>
           )}
         </div>
-
-        <div className="card" style={{ marginBottom: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>History</span>
-            <button className="ghostbtn" onClick={() => setShowHistory(true)}>📊 View Graphs</button>
-          </div>
-        </div>
       </div>
 
       {addFoodMeal && <FoodModal mealLabel={MEALS.find(m => m.key === addFoodMeal).label} onClose={() => setAddFoodMeal(null)}
@@ -472,10 +458,14 @@ function KetoTrack() {
       {editFood && <EditFoodModal food={editFood.food} onClose={() => setEditFood(null)}
         onSave={(updates) => { updateFood(editFood.mealKey, editFood.food.id, updates); setEditFood(null); }}
         onDelete={() => { removeFood(editFood.mealKey, editFood.food.id); setEditFood(null); }} />}
+      {pickMealFor && <MealPickerModal item={pickMealFor} onClose={() => setPickMealFor(null)} onPick={(mealKey) => logRegularToMeal(pickMealFor, mealKey)} />}
+      {editRegular && <EditRegularModal item={editRegular} onClose={() => setEditRegular(null)}
+        onSave={(updates) => { updateRegular(editRegular.id, updates); setEditRegular(null); }} />}
       {showAddWorkout && <WorkoutModal onClose={() => setShowAddWorkout(false)} onSave={(w) => { addWorkout(w); setShowAddWorkout(false); }} />}
       {showWeightForm && <WeightModal onClose={() => setShowWeightForm(false)} onSave={(entry) => { persistWeight([...weightLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowWeightForm(false); }} />}
       {showBpForm && <BpModal onClose={() => setShowBpForm(false)} onSave={(entry) => { persistBp([...bpLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowBpForm(false); }} />}
-      {showSettings && <SettingsModal profile={profile} onClose={() => setShowSettings(false)} onSave={(p) => { save('kt-profile', p); setProfile(p); setShowSettings(false); }} onExport={exportCSV} onShowHome={() => { setShowSettings(false); setShowHome(true); }} />}
+      {showSettings && <SettingsModal profile={profile} onClose={() => setShowSettings(false)} onSave={(p) => { save('kt-profile', p); setProfile(p); setShowSettings(false); }}
+        onExport={exportCSV} onShowHome={() => { setShowSettings(false); setShowHome(true); }} onShowHistory={() => { setShowSettings(false); setShowHistory(true); }} />}
       {showHistory && <HistoryModal targets={targets} weightLog={weightLog} onClose={() => setShowHistory(false)} />}
       {showHome && <Modal title="Add to Home Screen" onClose={() => setShowHome(false)}><HomeScreenSteps /></Modal>}
       {popup && <MacroPopup data={popup} onClose={() => setPopup(null)} />}
@@ -487,11 +477,6 @@ function ProfileSetup({ onDone }) {
   const [f, setF] = useState({ name: '', age: '', height: '', currentWeight: '', goalWeight: '' });
   const [t, setT] = useState(DEFAULT_TARGETS);
   const num = (v) => parseFloat(v) || 0;
-
-  useEffect(() => {
-    const w = num(f.currentWeight);
-    if (w > 0) setT({ calories: 1800, protein: Math.round(w * 0.85), netCarbs: 25, fat: 80, water: Math.round(w / 2) });
-  }, [f.currentWeight]);
 
   const submit = () => {
     if (!f.name || !f.currentWeight) return;
@@ -519,10 +504,10 @@ function ProfileSetup({ onDone }) {
           <div style={{ fontSize: 12, fontWeight: 600, color: BURGUNDY, marginTop: 14, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Daily Targets — suggested, edit as you like</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <Field label="Calories"><input type="number" value={t.calories} onChange={e => setT({ ...t, calories: num(e.target.value) })} /></Field>
-            <Field label="Protein floor (g)"><input type="number" value={t.protein} onChange={e => setT({ ...t, protein: num(e.target.value) })} /></Field>
+            <Field label="Protein Goal (g)"><input type="number" value={t.protein} onChange={e => setT({ ...t, protein: num(e.target.value) })} /></Field>
             <Field label="Net carb ceiling (g)"><input type="number" value={t.netCarbs} onChange={e => setT({ ...t, netCarbs: num(e.target.value) })} /></Field>
-            <Field label="Fat floor (g)"><input type="number" value={t.fat} onChange={e => setT({ ...t, fat: num(e.target.value) })} /></Field>
-            <Field label="Water floor (oz)"><input type="number" value={t.water} onChange={e => setT({ ...t, water: num(e.target.value) })} /></Field>
+            <Field label="Fat Goal (g)"><input type="number" value={t.fat} onChange={e => setT({ ...t, fat: num(e.target.value) })} /></Field>
+            <Field label="Water Goal (oz)"><input type="number" value={t.water} onChange={e => setT({ ...t, water: num(e.target.value) })} /></Field>
           </div>
 
           <PrimaryButton onClick={submit} label="Start Tracking" />
@@ -541,8 +526,69 @@ function ProfileSetup({ onDone }) {
   );
 }
 
-function MealSection({ meal, foods, commonFoods, onAdd, onAiAdd, onRemove, onEdit, onToggleCommon }) {
-  const loggedCommonIds = new Set(foods.filter(f => f.sourceId).map(f => f.sourceId));
+// ---------- Your Regulars ----------
+function RegularsSection({ regulars, onPick, onEdit, onDelete, onTogglePin }) {
+  return (
+    <div className="card">
+      <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600, marginBottom: 10 }}>⭐ Your Regulars</div>
+      {regulars.length === 0 ? (
+        <div style={{ color: MUTED, fontSize: 13 }}>Log a few foods and they'll show up here for quick re-adding.</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {regulars.map(r => (
+            <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 0', borderBottom: `1px solid ${BORDER}` }}>
+              <button onClick={() => onPick(r)} style={{ background: 'none', border: 'none', textAlign: 'left', flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 5 }}>
+                  {r.pinned && <span style={{ fontSize: 11 }}>📌</span>}
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
+                </div>
+                <div style={{ fontSize: 11.5, color: MUTED }}>{Math.round(r.protein)}g P · {Math.max(0, Math.round(r.carbs - r.fiber))}g net C</div>
+              </button>
+              <button onClick={() => onTogglePin(r.id)} style={{ background: 'none', border: 'none', color: r.pinned ? BURGUNDY : '#C9C6D1', fontSize: 14 }}>📌</button>
+              <button onClick={() => onEdit(r)} style={{ background: 'none', border: 'none', color: '#B8B5BD', fontSize: 13 }}>✎</button>
+              <button onClick={() => onDelete(r.id)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 14 }}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MealPickerModal({ item, onClose, onPick }) {
+  return (
+    <Modal title={`Log "${item.name}" to…`} onClose={onClose}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {MEALS.map(m => (
+          <button key={m.key} onClick={() => onPick(m.key)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 14, border: `1px solid ${BORDER}`, borderRadius: 10, background: WHITE, fontSize: 14, fontWeight: 600, color: TEXT }}>
+            <span>{m.emoji}</span> {m.label}
+          </button>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
+function EditRegularModal({ item, onClose, onSave }) {
+  const [f, setF] = useState({ ...item });
+  const num = (v) => parseFloat(v) || 0;
+  const submit = () => onSave({ name: f.name, protein: num(f.protein), carbs: num(f.carbs), fiber: num(f.fiber), fat: num(f.fat), calories: num(f.calories) });
+  return (
+    <Modal title="Edit Regular" onClose={onClose}>
+      <Field label="Food name"><input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} /></Field>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <Field label="Protein (g)"><input type="number" value={f.protein} onChange={e => setF({ ...f, protein: e.target.value })} /></Field>
+        <Field label="Fat (g)"><input type="number" value={f.fat} onChange={e => setF({ ...f, fat: e.target.value })} /></Field>
+        <Field label="Total carbs (g)"><input type="number" value={f.carbs} onChange={e => setF({ ...f, carbs: e.target.value })} /></Field>
+        <Field label="Fiber (g)"><input type="number" value={f.fiber} onChange={e => setF({ ...f, fiber: e.target.value })} /></Field>
+      </div>
+      <Field label="Calories"><input type="number" value={f.calories} onChange={e => setF({ ...f, calories: e.target.value })} /></Field>
+      <PrimaryButton onClick={submit} />
+    </Modal>
+  );
+}
+
+function MealSection({ meal, foods, onAdd, onAiAdd, onRemove, onEdit }) {
   return (
     <div className="card">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -551,18 +597,14 @@ function MealSection({ meal, foods, commonFoods, onAdd, onAiAdd, onRemove, onEdi
           <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 14, fontWeight: 600, color: TEXT }}>{meal.label}</span>
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
-          <button onClick={onAiAdd} style={{ background: '#5F6368', border: 'none', borderRadius: 8, padding: '7px 12px', color: WHITE, display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, fontWeight: 700 }}>✨ Smart Add</button>
-          <button className="pill" onClick={onAdd}>+ Log</button>
+          <button onClick={onAdd} style={{ background: MANUAL_GRAY, border: 'none', borderRadius: 8, padding: '7px 12px', color: WHITE, fontSize: 12.5, fontWeight: 700 }}>Manual+</button>
+          <button onClick={onAiAdd} style={{ background: RED, border: 'none', borderRadius: 8, padding: '7px 12px', color: WHITE, fontSize: 12.5, fontWeight: 700 }}>Smart+</button>
         </div>
       </div>
 
-      {commonFoods.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: foods.length ? 12 : 0, paddingBottom: foods.length ? 12 : 0, borderBottom: foods.length ? `1px solid ${BORDER}` : 'none' }}>
-          {commonFoods.slice(0, 8).map(cf => <Checkbox key={cf.id} checked={loggedCommonIds.has(cf.id)} onClick={() => onToggleCommon(cf)} label={`${cf.name} — ${Math.round(cf.protein)}g P · ${Math.max(0, Math.round(cf.carbs - cf.fiber))}g net C`} />)}
-        </div>
-      )}
-
-      {foods.length === 0 ? (commonFoods.length === 0 && <div style={{ color: MUTED, fontSize: 13 }}>Nothing logged.</div>) : (
+      {foods.length === 0 ? (
+        <div style={{ color: MUTED, fontSize: 13 }}>Nothing logged.</div>
+      ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {foods.map(f => {
             const e = effective(f);
@@ -623,15 +665,14 @@ function FoodModal({ mealLabel, onClose, onSave }) {
   );
 }
 
-// Unified AI Add — describe in text, or take/upload a photo. Calls /api/estimate
-// (a Cloudflare Pages Function backed by Gemini). Falls back gracefully with a
-// clear message if the function isn't configured with an API key yet.
+// ---------- Smart Add: Search -> review/edit/delete -> Add ----------
 function AIAddModal({ mealLabel, onClose, onSave }) {
   const [tab, setTab] = useState('text');
   const [text, setText] = useState('');
   const [photo, setPhoto] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [results, setResults] = useState(null); // array of {tempId, name, protein, carbs, fiber, fat, calories}
   const fileRef = useRef();
 
   const handleFile = (e) => {
@@ -642,17 +683,15 @@ function AIAddModal({ mealLabel, onClose, onSave }) {
     reader.readAsDataURL(file);
   };
 
-  const submit = async () => {
+  const search = async () => {
     setError(null);
     if (tab === 'text' && !text.trim()) return;
-    if (tab === 'photo' && !photo) return;
+    if ((tab === 'photo' || tab === 'receipt') && !photo) return;
     setLoading(true);
     try {
-      const res = await fetch('/api/estimate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(tab === 'text' ? { mode: 'text', text } : { mode: 'photo', image: photo }),
-      });
+      const mode = tab === 'text' ? 'text' : tab; // 'text' | 'photo' | 'receipt'
+      const body = mode === 'text' ? { mode, text } : { mode, image: photo };
+      const res = await fetch('/api/estimate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const data = await res.json();
       if (!res.ok) {
         if (data.error === 'not_configured') setError("AI estimation isn't set up yet on this deployment — add a GEMINI_API_KEY to enable it, or log this manually for now.");
@@ -665,39 +704,76 @@ function AIAddModal({ mealLabel, onClose, onSave }) {
         setLoading(false);
         return;
       }
-      onSave(data.foods);
+      setResults(data.foods.map(f => ({ ...f, tempId: Math.random() })));
     } catch (e) {
       setError('Could not reach the AI estimator. Check your connection and try again.');
-      setLoading(false);
     }
+    setLoading(false);
   };
+
+  const updateResult = (tempId, updates) => setResults(results.map(r => r.tempId === tempId ? { ...r, ...updates } : r));
+  const removeResult = (tempId) => setResults(results.filter(r => r.tempId !== tempId));
+
+  const confirmAdd = () => {
+    if (!results || !results.length) return;
+    onSave(results.map(({ tempId, ...rest }) => rest));
+  };
+
+  const num = (v) => parseFloat(v) || 0;
 
   return (
     <Modal title={`Smart Add — ${mealLabel}`} onClose={onClose}>
-      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-        <button onClick={() => setTab('text')} style={{ flex: 1, padding: 10, borderRadius: 8, border: `1.5px solid ${tab === 'text' ? BURGUNDY : BORDER}`, background: tab === 'text' ? '#F6F1F2' : WHITE, color: tab === 'text' ? BURGUNDY : MUTED, fontWeight: 600, fontSize: 13 }}>Describe It</button>
-        <button onClick={() => setTab('photo')} style={{ flex: 1, padding: 10, borderRadius: 8, border: `1.5px solid ${tab === 'photo' ? BURGUNDY : BORDER}`, background: tab === 'photo' ? '#F6F1F2' : WHITE, color: tab === 'photo' ? BURGUNDY : MUTED, fontWeight: 600, fontSize: 13 }}>Photo</button>
-      </div>
+      {!results ? (
+        <>
+          <div style={{ display: 'flex', gap: 5, marginBottom: 16 }}>
+            {[['text', 'Describe It'], ['photo', 'Photo'], ['receipt', 'Receipt']].map(([key, label]) => (
+              <button key={key} onClick={() => setTab(key)} style={{ flex: 1, padding: 9, borderRadius: 8, border: `1.5px solid ${tab === key ? BURGUNDY : BORDER}`, background: tab === key ? '#F6F1F2' : WHITE, color: tab === key ? BURGUNDY : MUTED, fontWeight: 600, fontSize: 12 }}>{label}</button>
+            ))}
+          </div>
 
-      {tab === 'text' ? (
-        <Field label="What did you eat?">
-          <textarea value={text} onChange={e => setText(e.target.value)} placeholder={'e.g. "Core Power 42g protein shake and a Sonic small chicken nugget"'}
-            rows={3} style={{ fontFamily: 'inherit', background: '#FAFAFB', border: `1px solid ${BORDER}`, color: TEXT, borderRadius: 8, padding: '10px 11px', fontSize: 14, width: '100%', resize: 'vertical' }} autoFocus />
-        </Field>
+          {tab === 'text' ? (
+            <Field label="What did you eat?">
+              <textarea value={text} onChange={e => setText(e.target.value)} placeholder={'e.g. "Core Power 42g protein shake and a Sonic small chicken nugget"'}
+                rows={3} style={{ fontFamily: 'inherit', background: '#FAFAFB', border: `1px solid ${BORDER}`, color: TEXT, borderRadius: 8, padding: '10px 11px', fontSize: 14, width: '100%', resize: 'vertical' }} autoFocus />
+            </Field>
+          ) : (
+            <div onClick={() => fileRef.current.click()} style={{ border: `1.5px dashed ${BORDER}`, borderRadius: 10, padding: photo ? 0 : 24, textAlign: 'center', marginBottom: 14, overflow: 'hidden', cursor: 'pointer' }}>
+              {photo ? <img src={photo} alt="upload" style={{ width: '100%', display: 'block' }} /> : <div style={{ color: MUTED, fontSize: 13 }}>{tab === 'receipt' ? '🧾' : '📷'}<div>Tap to {tab === 'receipt' ? 'photograph your receipt' : 'add a photo'}</div></div>}
+            </div>
+          )}
+          <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleFile} style={{ display: 'none' }} />
+
+          {tab === 'receipt' && <div style={{ fontSize: 11.5, color: MUTED, marginTop: -8, marginBottom: 10 }}>Works best for a single fast-food receipt, not a full grocery haul.</div>}
+
+          {error && <div style={{ background: '#FBEAEA', border: '1px solid #F5C6C6', borderRadius: 10, padding: 10, fontSize: 12.5, color: RED, marginTop: 10 }}>{error}</div>}
+
+          <PrimaryButton onClick={search} disabled={loading} label={loading ? 'Searching…' : 'Search'} />
+        </>
       ) : (
-        <div onClick={() => fileRef.current.click()} style={{ border: `1.5px dashed ${BORDER}`, borderRadius: 10, padding: photo ? 0 : 24, textAlign: 'center', marginBottom: 14, overflow: 'hidden', cursor: 'pointer' }}>
-          {photo ? <img src={photo} alt="meal" style={{ width: '100%', display: 'block' }} /> : <div style={{ color: MUTED, fontSize: 13 }}>📷<div>Tap to add a photo</div></div>}
-        </div>
+        <>
+          <div style={{ fontSize: 12, color: MUTED, marginBottom: 12 }}>Review and edit before adding — nothing's logged yet.</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 14 }}>
+            {results.map(r => (
+              <div key={r.tempId} style={{ border: `1px solid ${BORDER}`, borderRadius: 10, padding: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <input value={r.name} onChange={e => updateResult(r.tempId, { name: e.target.value })} style={{ fontWeight: 600, fontSize: 13.5, border: 'none', background: 'none', padding: '2px 0', flex: 1 }} />
+                  <button onClick={() => removeResult(r.tempId)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 15 }}>✕</button>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+                  <div><label style={{ fontSize: 10, color: MUTED }}>Protein</label><input type="number" value={r.protein} onChange={e => updateResult(r.tempId, { protein: num(e.target.value) })} style={{ fontSize: 12, padding: '5px 6px' }} /></div>
+                  <div><label style={{ fontSize: 10, color: MUTED }}>Carbs</label><input type="number" value={r.carbs} onChange={e => updateResult(r.tempId, { carbs: num(e.target.value) })} style={{ fontSize: 12, padding: '5px 6px' }} /></div>
+                  <div><label style={{ fontSize: 10, color: MUTED }}>Fiber</label><input type="number" value={r.fiber} onChange={e => updateResult(r.tempId, { fiber: num(e.target.value) })} style={{ fontSize: 12, padding: '5px 6px' }} /></div>
+                  <div><label style={{ fontSize: 10, color: MUTED }}>Fat</label><input type="number" value={r.fat} onChange={e => updateResult(r.tempId, { fat: num(e.target.value) })} style={{ fontSize: 12, padding: '5px 6px' }} /></div>
+                  <div style={{ gridColumn: 'span 2' }}><label style={{ fontSize: 10, color: MUTED }}>Calories</label><input type="number" value={r.calories} onChange={e => updateResult(r.tempId, { calories: num(e.target.value) })} style={{ fontSize: 12, padding: '5px 6px' }} /></div>
+                </div>
+              </div>
+            ))}
+            {results.length === 0 && <div style={{ color: MUTED, fontSize: 13 }}>All items removed — go back and search again.</div>}
+          </div>
+          <button onClick={() => setResults(null)} style={{ background: 'none', border: 'none', color: BURGUNDY, fontSize: 12.5, fontWeight: 600, marginBottom: 4 }}>← Search again</button>
+          <PrimaryButton onClick={confirmAdd} disabled={results.length === 0} label={`Add to ${mealLabel}`} />
+        </>
       )}
-      <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleFile} style={{ display: 'none' }} />
-
-      <div style={{ background: '#FDF2E9', border: '1px solid #F2D9BC', borderRadius: 10, padding: 10, fontSize: 12, color: '#7A4A1F', marginTop: 4, marginBottom: 4 }}>
-        Each food gets logged as its own entry, marked with an asterisk (*) as an estimate — edit any of them afterward to confirm or adjust the numbers.
-      </div>
-
-      {error && <div style={{ background: '#FBEAEA', border: '1px solid #F5C6C6', borderRadius: 10, padding: 10, fontSize: 12.5, color: RED, marginTop: 10 }}>{error}</div>}
-
-      <PrimaryButton onClick={submit} disabled={loading} label={loading ? 'Estimating…' : 'Add to ' + mealLabel} />
     </Modal>
   );
 }
@@ -771,22 +847,23 @@ function BpModal({ onClose, onSave }) {
   );
 }
 
-function SettingsModal({ profile, onClose, onSave, onExport, onShowHome }) {
+function SettingsModal({ profile, onClose, onSave, onExport, onShowHome, onShowHistory }) {
   const [t, setT] = useState(profile.targets);
   const [goalWeight, setGoalWeight] = useState(profile.goalWeight);
   const num = (v) => parseFloat(v) || 0;
   return (
     <Modal title="Settings" onClose={onClose}>
       <div style={{ fontSize: 12, fontWeight: 600, color: BURGUNDY, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Daily Targets</div>
-      <Field label="Protein floor (g)"><input type="number" value={t.protein} onChange={e => setT({ ...t, protein: num(e.target.value) })} /></Field>
-      <Field label="Fat floor (g)"><input type="number" value={t.fat} onChange={e => setT({ ...t, fat: num(e.target.value) })} /></Field>
+      <Field label="Protein Goal (g)"><input type="number" value={t.protein} onChange={e => setT({ ...t, protein: num(e.target.value) })} /></Field>
+      <Field label="Fat Goal (g)"><input type="number" value={t.fat} onChange={e => setT({ ...t, fat: num(e.target.value) })} /></Field>
       <Field label="Net carb ceiling (g)"><input type="number" value={t.netCarbs} onChange={e => setT({ ...t, netCarbs: num(e.target.value) })} /></Field>
       <Field label="Calorie ceiling"><input type="number" value={t.calories} onChange={e => setT({ ...t, calories: num(e.target.value) })} /></Field>
-      <Field label="Water floor (oz)"><input type="number" value={t.water} onChange={e => setT({ ...t, water: num(e.target.value) })} /></Field>
+      <Field label="Water Goal (oz)"><input type="number" value={t.water} onChange={e => setT({ ...t, water: num(e.target.value) })} /></Field>
       <Field label="Goal weight (lbs)"><input type="number" value={goalWeight} onChange={e => setGoalWeight(num(e.target.value))} /></Field>
       <PrimaryButton onClick={() => onSave({ ...profile, targets: t, goalWeight })} label="Save Targets" />
 
       <div style={{ height: 1, background: BORDER, margin: '18px 0' }} />
+      <button className="ghostbtn" onClick={onShowHistory} style={{ width: '100%', justifyContent: 'center', padding: 12, marginBottom: 10 }}>📊 View History Graphs</button>
       <button className="ghostbtn" onClick={onExport} style={{ width: '100%', justifyContent: 'center', padding: 12, marginBottom: 10 }}>⬇ Export Data (CSV)</button>
       <button className="ghostbtn" onClick={onShowHome} style={{ width: '100%', justifyContent: 'center', padding: 12 }}>📱 Add to Home Screen</button>
 
