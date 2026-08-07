@@ -176,6 +176,7 @@ function KetoTrack() {
   const [pickMealFor, setPickMealFor] = useState(null); // Your Regulars item awaiting meal choice
   const [editRegular, setEditRegular] = useState(null);
   const [showRegulars, setShowRegulars] = useState(false);
+  const [expandedMeals, setExpandedMeals] = useState({});
 
   useEffect(() => {
     setProfile(load('kt-profile', null));
@@ -372,8 +373,6 @@ function KetoTrack() {
           </div>
         )}
 
-        <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 15, fontWeight: 600, color: WHITE }}>{fmtHeader(selectedDate)}</div>
-
         <div style={{ display: 'flex', gap: 6 }}>
           <RowStat label="Protein" emoji="🥩" value={totals.protein} target={targets.protein} unit="g" kind="floor" />
           <RowStat label="Net Carbs" emoji="🌾" value={totals.netCarbs} target={targets.netCarbs} unit="g" kind="ceiling" />
@@ -381,12 +380,13 @@ function KetoTrack() {
           <RowStat label="Fat" emoji="💧" value={totals.fat} target={targets.fat} unit="g" kind="floor" />
         </div>
 
-        <div className="card">
-          <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600, marginBottom: 10 }}>Water</div>
-          <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 30, fontWeight: 700, color: statColor(dayData.water, targets.water, 'floor') }}>{dayData.water}<span style={{ fontSize: 13, color: MUTED, fontWeight: 500 }}> oz</span></div>
-          <div style={{ fontSize: 12, color: MUTED, marginBottom: 12 }}>goal {targets.water} oz</div>
-          <div style={{ display: 'flex', gap: 5 }}>
-            {[...Array(10)].map((_, i) => { const amt = (i + 1) * 10; const filled = amt <= dayData.water; return <button key={i} onClick={() => setWater(amt)} style={{ flex: 1, height: 26, borderRadius: 5, border: 'none', background: filled ? statColor(dayData.water, targets.water, 'floor') : TRACK_BG }} />; })}
+        <div className="card" style={{ padding: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+            <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 12, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>💧 Water</span>
+            <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 18, fontWeight: 700, color: statColor(dayData.water, targets.water, 'floor') }}>{dayData.water}<span style={{ fontSize: 11, color: MUTED, fontWeight: 500 }}> / {targets.water} oz</span></span>
+          </div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {[...Array(10)].map((_, i) => { const amt = (i + 1) * 10; const filled = amt <= dayData.water; return <button key={i} onClick={() => setWater(amt)} style={{ flex: 1, height: 18, borderRadius: 4, border: 'none', background: filled ? statColor(dayData.water, targets.water, 'floor') : TRACK_BG }} />; })}
           </div>
         </div>
 
@@ -397,6 +397,7 @@ function KetoTrack() {
 
         {MEALS.map(m => (
           <MealSection key={m.key} meal={m} foods={dayData.meals[m.key] || []}
+            expanded={!!expandedMeals[m.key]} onToggleExpand={() => setExpandedMeals({ ...expandedMeals, [m.key]: !expandedMeals[m.key] })}
             onAdd={() => setAddFoodMeal(m.key)} onAiAdd={() => setAiMeal(m.key)} onRemove={(id) => removeFood(m.key, id)}
             onEdit={(food) => setEditFood({ mealKey: m.key, food })} />
         ))}
@@ -596,41 +597,51 @@ function EditRegularModal({ item, onClose, onSave }) {
   );
 }
 
-function MealSection({ meal, foods, onAdd, onAiAdd, onRemove, onEdit }) {
+function MealSection({ meal, foods, expanded, onToggleExpand, onAdd, onAiAdd, onRemove, onEdit }) {
+  const totals = foods.reduce((acc, f) => { const e = effective(f); return { protein: acc.protein + e.protein, netC: acc.netC + Math.max(0, e.carbs - e.fiber), calories: acc.calories + e.calories }; }, { protein: 0, netC: 0, calories: 0 });
   return (
     <div className="card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+      <button onClick={onToggleExpand} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', background: 'none', border: 'none', textAlign: 'left', marginBottom: expanded ? 12 : 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span>{meal.emoji}</span>
           <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 14, fontWeight: 600, color: TEXT }}>{meal.label}</span>
+          {!expanded && (
+            <span style={{ fontSize: 11.5, color: MUTED }}>{foods.length === 0 ? '— nothing logged' : `— ${foods.length} item${foods.length > 1 ? 's' : ''} · ${Math.round(totals.protein)}g P · ${Math.round(totals.calories)} cal`}</span>
+          )}
         </div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button onClick={onAdd} style={{ background: MANUAL_GRAY, border: 'none', borderRadius: 8, padding: '7px 12px', color: WHITE, fontSize: 12.5, fontWeight: 700 }}>Manual+</button>
-          <button onClick={onAiAdd} style={{ background: RED, border: 'none', borderRadius: 8, padding: '7px 12px', color: WHITE, fontSize: 12.5, fontWeight: 700 }}>Smart+</button>
-        </div>
-      </div>
+        <span style={{ color: MUTED, fontSize: 12 }}>{expanded ? '▲' : '▼'}</span>
+      </button>
 
-      {foods.length === 0 ? (
-        <div style={{ color: MUTED, fontSize: 13 }}>Nothing logged.</div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {foods.map(f => {
-            const e = effective(f);
-            const pct = f.percent ?? 100;
-            return (
-              <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0' }}>
-                <button onClick={() => onEdit(f)} style={{ background: 'none', border: 'none', textAlign: 'left', flex: 1 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 5 }}>
-                    {f.name}{f.estimated && <span style={{ color: '#B8721F' }}>*</span>}{pct !== 100 && <span style={{ fontSize: 11, color: MUTED, fontWeight: 400 }}>({pct}%)</span>}
-                    <span style={{ fontSize: 11, color: '#B8B5BD' }}>✎</span>
+      {expanded && (
+        <>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+            <button onClick={onAdd} style={{ background: MANUAL_GRAY, border: 'none', borderRadius: 8, padding: '7px 12px', color: WHITE, fontSize: 12.5, fontWeight: 700 }}>Manual+</button>
+            <button onClick={onAiAdd} style={{ background: RED, border: 'none', borderRadius: 8, padding: '7px 12px', color: WHITE, fontSize: 12.5, fontWeight: 700 }}>Smart+</button>
+          </div>
+
+          {foods.length === 0 ? (
+            <div style={{ color: MUTED, fontSize: 13 }}>Nothing logged.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {foods.map(f => {
+                const e = effective(f);
+                const pct = f.percent ?? 100;
+                return (
+                  <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0' }}>
+                    <button onClick={() => onEdit(f)} style={{ background: 'none', border: 'none', textAlign: 'left', flex: 1 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 5 }}>
+                        {f.name}{f.estimated && <span style={{ color: '#B8721F' }}>*</span>}{pct !== 100 && <span style={{ fontSize: 11, color: MUTED, fontWeight: 400 }}>({pct}%)</span>}
+                        <span style={{ fontSize: 11, color: '#B8B5BD' }}>✎</span>
+                      </div>
+                      <div style={{ fontSize: 11.5, color: MUTED }}>{Math.round(e.protein)}g P · {Math.max(0, Math.round(e.carbs - e.fiber))}g net C · {Math.round(e.fat)}g F · {Math.round(e.calories)} cal</div>
+                    </button>
+                    <button onClick={() => onRemove(f.id)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 14 }}>✕</button>
                   </div>
-                  <div style={{ fontSize: 11.5, color: MUTED }}>{Math.round(e.protein)}g P · {Math.max(0, Math.round(e.carbs - e.fiber))}g net C · {Math.round(e.fat)}g F · {Math.round(e.calories)} cal</div>
-                </button>
-                <button onClick={() => onRemove(f.id)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 14 }}>✕</button>
-              </div>
-            );
-          })}
-        </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
