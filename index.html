@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>KetoTrack</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 fill=%22%233A3A3D%22/><polygon points=%2250,25 75,75 25,75%22 fill=%22%237A1F2B%22/></svg>" />
+<link rel="apple-touch-icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAIAAACyr5FlAAAEQklEQVR4nO3ZQW7bMBCFYafoCbrtTQIE6NF7mW57hi5YpCmcN5YsiXwz83/rIqXon0NDfnl9fbsBn/myegHwRRyQiAMScUAiDkjEAYk4IBEHJOKARByQiAMScUAiDkjEAYk4IBEHJOKARByQiAMScUAiDkjEAYk4IBEHJOKARByQiAMScUAiDkjEAYk4IBEHJOKARByQiAMScUAiDkjE8Z8fv36vXoIR4vhnlEEf74gDEnH89XFgMDwG4oBEHLfbZ6OC4XEjjpvugD6IA1L3OOLx0Hx4tI5jy2ffuY/WcSDWN47tI6Ht8OgbBx5qGsfeYdBzeHSM47lPumEfHePARu3iODIAug2PdnHEfn7/tnoJRnrFER/9UUbcR6vh0SiOsz7XPn00iiP2cWBwuQxd4jj3uDcZHi3iePhZ3o+Kh8OjQx8t4oipDrhc6sdx3REvPzzqxxGLx0Pz4VE8ji0vNmKdX3tUjmPOJ1e4j8pxxLZfGW0vl7JxzDzQVYdHzTieeLFx8N+X7KNmHLHnromGl0vBOFYd4nrDo2AcsSMDoNvwqBbH8RcbsVavPUrF4fDZOKzhLKXiiJ11KfS5XOrE4XNkfVZyUJ04Yuce9ybDo0gcV38P3fs3awyPCnF4fhKeq9qlQhyx666A8pdL+jicD6jz2rbIHcfpP7DtVfsHudxxxOaM/cKXS+I4shzKLOu8lziO2MwDXXV4ZI1j/ouNWMnXHinjyLjXGdecMo7YqiFf73LJF0fGIzikW3m+OGJrj2+x4ZEsDrfvoXvXkGt4ZIoj184qiZ4iUxwxh7Ex+KzkoDRxJDpwD2V5lhxxLP+Bba8aP8jliCPmVsbguapdEsSR4pA9wf+5EsQRcz6gzmvbwj0O/xcbsdSvPazjMN+7Uzg/o3UcMf+xMWRZ5z3fOJyP1Llsn9Q3jliu45hrte9M48j+PfRexm+mjnF47tTVDJ/aMY5YxrExpFu5XRyGB2gat2f3iiPdD2x75fpBziuOWPYyhkRPYRSH1aFZyGcfjOKIJTpwD2V5Fpc46r3YiKV47WERh8leWHHYE4s4YvXGxuD/XOvjcDginpbvzOI4yr/YiJm/9lg/OQK1yxicn3FlHMvHZgoLd8l3cjgfqXPZPumyOLq92Ih5vvZYEwcXyl5LdszxWuk2NgbDp14QB2PjOfP3zW5yGB6gadye/eX19W3m/8fYOGhmQFMnB2UcN3MP7a4V+JgXB2PjLNN2clIclHGuOfvJtQJpRhyMjStM2FUmB6TL42BsXOfqvf166V+/+b31w3ZcK5CIAxJxQCIOSMQBiTggEQck4oBEHJCIAxJxQCIOSMQBiTggEQck4oBEHJCIAxJxQCIOSMQBiTggEQck4oBEHJCIAxJxQCIOSMQBiTggEQck4oBEHJCIAxJxQCIOSMQBiTgg/QGMQkQBonbfXgAAAABJRU5ErkJggg==" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="theme-color" content="#3A3A3D" />
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+  * { box-sizing: border-box; margin:0; padding:0; }
+  body { font-family: 'Inter', sans-serif; }
+  button { font-family: inherit; cursor: pointer; }
+  input, select, textarea { font-family: inherit; background: #FAFAFB; border: 1px solid #E9E7ED; color: #1F2024; border-radius: 8px; padding: 10px 11px; font-size: 14px; width: 100%; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: #7A1F2B; }
+  ::placeholder { color: #A6A3AD; }
+  .card { background: #FFFFFF; border: 1px solid #E9E7ED; border-radius: 14px; padding: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .pill { background: #7A1F2B; border: none; border-radius: 20px; padding: 7px 14px; color: #FFFFFF; display: flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; }
+  .ghostbtn { background: #F6F1F2; border: 1px solid #E9E7ED; border-radius: 8px; padding: 7px 10px; color: #7A1F2B; display: flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; }
+  .banner { background: #FDF2E9; border: 1px solid #F2D9BC; border-radius: 12px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+</style>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js" crossorigin></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/plain" id="app-source">
+const { useState, useEffect, useMemo, useRef } = React;
+
+// ---------- Tokens ----------
+const GRAY = '#3A3A3D';
+const BURGUNDY = '#7A1F2B';
+const WHITE = '#FFFFFF';
+const TEXT = '#1F2024';
+const MUTED = '#6B7280';
+const BORDER = '#E9E7ED';
+const BLUE = '#2563EB';
+const RED = '#E11D2E';
+const TRACK_BG = '#F1EFF1';
+
+const MEALS = [
+  { key: 'breakfast', label: 'Breakfast', emoji: '☕' },
+  { key: 'lunch', label: 'Lunch', emoji: '🥪' },
+  { key: 'dinner', label: 'Dinner', emoji: '🍽️' },
+  { key: 'snacks', label: 'Snacks', emoji: '🍪' },
+];
+
+const DEFAULT_TARGETS = { calories: 1800, protein: 80, netCarbs: 60, fat: 80, water: 100 };
+
+const load = (key, fallback) => {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+  catch (e) { return fallback; }
+};
+const save = (key, value) => {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { console.error('save failed', e); }
+};
+const DAY_KEY = (d) => `kt-day-${d}`;
+const EMPTY_DAY = { meals: { breakfast: [], lunch: [], dinner: [], snacks: [] }, workouts: [], water: 0 };
+
+const iso = (d) => d.toISOString().slice(0, 10);
+const todayISO = () => iso(new Date());
+const startOfWeek = (dateISO) => { const d = new Date(dateISO + 'T00:00:00'); d.setDate(d.getDate() - d.getDay()); return d; };
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const dayLabel = (d) => ['S', 'M', 'T', 'W', 'T', 'F', 'S'][d.getDay()];
+const fmtHeader = (dateISO) => new Date(dateISO + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+const monthKey = (dateISO) => dateISO.slice(0, 7);
+
+function statColor(value, target, kind) {
+  if (kind === 'floor') return value >= target ? BLUE : RED;
+  return value <= target ? BLUE : RED;
+}
+const effective = (f) => {
+  const pct = (f.percent ?? 100) / 100;
+  return { protein: f.protein * pct, carbs: f.carbs * pct, fiber: f.fiber * pct, fat: f.fat * pct, calories: f.calories * pct };
+};
+
+// ---------- UI atoms ----------
+function BigStat({ label, value, target, unit, kind }) {
+  const color = statColor(value, target, kind);
+  const pct = Math.min(100, (value / target) * 100);
+  return (
+    <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 14, padding: 20, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+      <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.06em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600, marginBottom: 8 }}>{label}</div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+        <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 40, fontWeight: 700, color }}>{Math.round(value)}{unit}</span>
+        <span style={{ fontSize: 14, color: MUTED }}>/ {target}{unit}</span>
+      </div>
+      <div style={{ height: 8, background: TRACK_BG, borderRadius: 4, marginTop: 12, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 4, transition: 'width 0.3s ease' }} />
+      </div>
+    </div>
+  );
+}
+
+function SmallStat({ label, emoji, value, target, unit, kind }) {
+  const color = statColor(value, target, kind);
+  const pct = Math.min(100, (value / target) * 100);
+  return (
+    <div style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 14, padding: '18px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
+        <span style={{ fontSize: 15 }}>{emoji}</span>
+        <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 12, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>{label}</span>
+      </div>
+      <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 32, fontWeight: 700, color }}>{Math.round(value)}<span style={{ fontSize: 14, color: MUTED, fontWeight: 500 }}>{unit}</span></div>
+      <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>/ {target}{unit}</div>
+      <div style={{ height: 6, background: TRACK_BG, borderRadius: 3, marginTop: 10, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 3 }} />
+      </div>
+    </div>
+  );
+}
+
+function Modal({ title, onClose, children }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(30,10,20,0.5)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 50 }}>
+      <div style={{ background: WHITE, borderRadius: '16px 16px 0 0', padding: 22, width: '100%', maxWidth: 480, maxHeight: '88vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+          <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700, color: BURGUNDY }}>{title}</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 20 }}>✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+function Field({ label, children }) {
+  return <div style={{ marginBottom: 12 }}><label style={{ fontSize: 12, color: MUTED, display: 'block', marginBottom: 5, fontWeight: 500 }}>{label}</label>{children}</div>;
+}
+function PrimaryButton({ onClick, label = 'Save', style, disabled }) {
+  return <button onClick={onClick} disabled={disabled} style={{ width: '100%', background: disabled ? '#C9C6D1' : BURGUNDY, border: 'none', borderRadius: 9, padding: 13, color: WHITE, fontWeight: 700, fontSize: 14, marginTop: 6, ...style }}>{label}</button>;
+}
+function Checkbox({ checked, onClick, label }) {
+  return (
+    <button onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 9, background: 'none', border: 'none', padding: '6px 0 2px' }}>
+      <div style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${checked ? BURGUNDY : '#C9C6D1'}`, background: checked ? BURGUNDY : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        {checked && <span style={{ color: WHITE, fontSize: 11, fontWeight: 700 }}>✓</span>}
+      </div>
+      <span style={{ fontSize: 13, color: TEXT }}>{label}</span>
+    </button>
+  );
+}
+
+function HomeScreenSteps() {
+  return (
+    <div>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontFamily: "'Oswald', sans-serif", fontWeight: 600, fontSize: 13, color: BURGUNDY, marginBottom: 8 }}>iPhone (Safari)</div>
+        <ol style={{ fontSize: 13, color: TEXT, paddingLeft: 18, lineHeight: 1.8 }}>
+          <li>Tap the Share icon at the bottom of the screen</li>
+          <li>Scroll down and tap "Add to Home Screen"</li>
+          <li>Tap "Add" in the top right</li>
+        </ol>
+      </div>
+      <div>
+        <div style={{ fontFamily: "'Oswald', sans-serif", fontWeight: 600, fontSize: 13, color: BURGUNDY, marginBottom: 8 }}>Android (Chrome)</div>
+        <ol style={{ fontSize: 13, color: TEXT, paddingLeft: 18, lineHeight: 1.8 }}>
+          <li>Tap the ⋮ menu in the top right</li>
+          <li>Tap "Add to Home Screen"</li>
+          <li>Tap "Add" to confirm</li>
+        </ol>
+      </div>
+    </div>
+  );
+}
+
+// =====================================================================
+function KetoTrack() {
+  const [profile, setProfile] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(todayISO());
+  const [weekAnchor, setWeekAnchor] = useState(todayISO());
+  const [dayData, setDayData] = useState(EMPTY_DAY);
+  const [weightLog, setWeightLog] = useState([]);
+  const [bpLog, setBpLog] = useState([]);
+  const [commonFoods, setCommonFoods] = useState([]);
+  const [dismissed, setDismissed] = useState({});
+
+  const [addFoodMeal, setAddFoodMeal] = useState(null);
+  const [aiMeal, setAiMeal] = useState(null);
+  const [editFood, setEditFood] = useState(null);
+  const [showAddWorkout, setShowAddWorkout] = useState(false);
+  const [showWeightForm, setShowWeightForm] = useState(false);
+  const [showBpForm, setShowBpForm] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showHome, setShowHome] = useState(false);
+  const [popup, setPopup] = useState(null);
+
+  useEffect(() => {
+    setProfile(load('kt-profile', null));
+    setWeightLog(load('kt-weight-log', []));
+    setBpLog(load('kt-bp-log', []));
+    setCommonFoods(load('kt-common-foods', []));
+    setDismissed(load('kt-dismissed', {}));
+    setLoaded(true);
+  }, []);
+
+  useEffect(() => { setDayData(load(DAY_KEY(selectedDate), EMPTY_DAY)); }, [selectedDate]);
+
+  const targets = profile?.targets || DEFAULT_TARGETS;
+  const goalWeight = profile?.goalWeight || 200;
+
+  const persistDay = (next) => { setDayData(next); save(DAY_KEY(selectedDate), next); };
+  const persistWeight = (next) => { setWeightLog(next); save('kt-weight-log', next); };
+  const persistBp = (next) => { setBpLog(next); save('kt-bp-log', next); };
+  const persistCommon = (next) => { setCommonFoods(next); save('kt-common-foods', next); };
+  const persistDismissed = (next) => { setDismissed(next); save('kt-dismissed', next); };
+
+  const allFoods = useMemo(() => Object.values(dayData.meals || {}).flat(), [dayData]);
+  const totals = allFoods.reduce((acc, f) => {
+    const e = effective(f);
+    return { calories: acc.calories + e.calories, protein: acc.protein + e.protein, netCarbs: acc.netCarbs + Math.max(0, e.carbs - e.fiber), fat: acc.fat + e.fat };
+  }, { calories: 0, protein: 0, netCarbs: 0, fat: 0 });
+
+  // record / bump a food's frequency in the auto-saved Common Foods list
+  const recordCommonFood = (mealKey, food, commonFoodsSnapshot) => {
+    const key = food.name.trim().toLowerCase();
+    const idx = commonFoodsSnapshot.findIndex(cf => cf.mealType === mealKey && cf.name.trim().toLowerCase() === key);
+    if (idx >= 0) {
+      const next = [...commonFoodsSnapshot];
+      next[idx] = { ...next[idx], count: (next[idx].count || 1) + 1 };
+      return next;
+    }
+    return [...commonFoodsSnapshot, { id: Date.now() + Math.random(), name: food.name, protein: food.protein, carbs: food.carbs, fiber: food.fiber, fat: food.fat, calories: food.calories, mealType: mealKey, count: 1 }];
+  };
+
+  const addFood = (mealKey, food) => {
+    const next = { ...dayData, meals: { ...dayData.meals, [mealKey]: [...dayData.meals[mealKey], { ...food, id: Date.now() + Math.random(), percent: 100 }] } };
+    persistDay(next);
+    persistCommon(recordCommonFood(mealKey, food, commonFoods));
+    const e = effective({ ...food, percent: 100 });
+    const netC = Math.max(0, e.carbs - e.fiber);
+    const carbThird = targets.netCarbs / 3, proteinThird = targets.protein / 3;
+    setPopup({ carbs: { value: netC, over: netC > carbThird, third: carbThird }, protein: { value: e.protein, over: e.protein < proteinThird, third: proteinThird } });
+  };
+
+  const addFoodBatch = (mealKey, foods, estimated) => {
+    const stamped = foods.map(f => ({ ...f, id: Date.now() + Math.random(), percent: 100, estimated: !!estimated }));
+    const next = { ...dayData, meals: { ...dayData.meals, [mealKey]: [...dayData.meals[mealKey], ...stamped] } };
+    persistDay(next);
+    let cf = commonFoods;
+    foods.forEach(f => { cf = recordCommonFood(mealKey, f, cf); });
+    persistCommon(cf);
+    const totals2 = foods.reduce((acc, f) => {
+      const e = effective({ ...f, percent: 100 });
+      return { carbs: acc.carbs + Math.max(0, e.carbs - e.fiber), protein: acc.protein + e.protein };
+    }, { carbs: 0, protein: 0 });
+    const carbThird = targets.netCarbs / 3, proteinThird = targets.protein / 3;
+    setPopup({ carbs: { value: totals2.carbs, over: totals2.carbs > carbThird, third: carbThird }, protein: { value: totals2.protein, over: totals2.protein < proteinThird, third: proteinThird } });
+  };
+
+  const updateFood = (mealKey, id, updates) => persistDay({ ...dayData, meals: { ...dayData.meals, [mealKey]: dayData.meals[mealKey].map(f => f.id === id ? { ...f, ...updates } : f) } });
+  const removeFood = (mealKey, id) => persistDay({ ...dayData, meals: { ...dayData.meals, [mealKey]: dayData.meals[mealKey].filter(f => f.id !== id) } });
+  const toggleCommonFood = (mealKey, cf) => {
+    const existing = dayData.meals[mealKey].find(f => f.sourceId === cf.id);
+    if (existing) removeFood(mealKey, existing.id);
+    else addFood(mealKey, { name: cf.name, protein: cf.protein, carbs: cf.carbs, fiber: cf.fiber, fat: cf.fat, calories: cf.calories, sourceId: cf.id });
+  };
+  const addWorkout = (w) => persistDay({ ...dayData, workouts: [...dayData.workouts, { ...w, id: Date.now() }] });
+  const removeWorkout = (id) => persistDay({ ...dayData, workouts: dayData.workouts.filter(w => w.id !== id) });
+  const setWater = (n) => persistDay({ ...dayData, water: n === dayData.water ? n - 20 : n });
+
+  const latestWeight = weightLog.length ? weightLog[weightLog.length - 1].weight : null;
+  const startWeight = weightLog.length ? weightLog[0].weight : null;
+  const latestBp = bpLog.length ? bpLog[bpLog.length - 1] : null;
+
+  const weekDays = useMemo(() => { const start = startOfWeek(weekAnchor); return [...Array(7)].map((_, i) => addDays(start, i)); }, [weekAnchor]);
+
+  const today = new Date();
+  const isFriday = today.getDay() === 5;
+  const loggedWeightToday = weightLog.some(w => w.date === todayISO());
+  const showFridayReminder = isFriday && !loggedWeightToday && dismissed.friday !== todayISO();
+
+  const dom = today.getDate();
+  const loggedBpThisMonth = bpLog.some(b => monthKey(b.date) === monthKey(todayISO()));
+  const showBpReminder = (dom === 1 || dom === 4) && !loggedBpThisMonth && dismissed.bp !== monthKey(todayISO());
+
+  const showInstallCard = dismissed.install !== true;
+
+  const share = () => {
+    if (navigator.share) navigator.share({ title: 'KetoTrack', text: 'Check out KetoTrack, the keto macro tracker I\'ve been using — tap to try it:', url: window.location.href }).catch(() => {});
+    else { navigator.clipboard?.writeText(window.location.href); alert('Link copied — send it to anyone you want to share KetoTrack with!'); }
+  };
+
+  const exportCSV = () => {
+    const keys = Object.keys(localStorage).filter(k => k.startsWith('kt-day-')).sort();
+    const wMap = Object.fromEntries(weightLog.map(w => [w.date, w.weight]));
+    const bpMap = Object.fromEntries(bpLog.map(b => [b.date, `${b.systolic}/${b.diastolic}`]));
+    const rows = [['Date', 'Calories', 'Protein (g)', 'Net Carbs (g)', 'Fat (g)', 'Water (oz)', 'Weight (lbs)', 'Blood Pressure']];
+    keys.forEach(k => {
+      const date = k.replace('kt-day-', '');
+      const d = load(k, EMPTY_DAY);
+      const foods = Object.values(d.meals || {}).flat();
+      const t = foods.reduce((acc, f) => { const e = effective(f); return { calories: acc.calories + e.calories, protein: acc.protein + e.protein, netCarbs: acc.netCarbs + Math.max(0, e.carbs - e.fiber), fat: acc.fat + e.fat }; }, { calories: 0, protein: 0, netCarbs: 0, fat: 0 });
+      rows.push([date, Math.round(t.calories), Math.round(t.protein), Math.round(t.netCarbs), Math.round(t.fat), d.water || 0, wMap[date] ?? '', bpMap[date] ?? '']);
+    });
+    const csv = rows.map(r => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `ketotrack-export-${todayISO()}.csv`;
+    a.click();
+  };
+
+  if (!loaded) return <div style={{ background: GRAY, minHeight: '100vh' }} />;
+  if (!profile) return <ProfileSetup onDone={(p) => {
+    save('kt-profile', p);
+    setProfile(p);
+    if (p.currentWeight) persistWeight([{ date: todayISO(), weight: p.currentWeight, note: '' }]);
+  }} />;
+
+  return (
+    <div style={{ background: GRAY, minHeight: '100vh', fontFamily: "'Inter', sans-serif", color: TEXT, paddingBottom: 40 }}>
+      <div style={{ background: BURGUNDY, padding: '22px 20px 18px' }}>
+        <div style={{ maxWidth: 480, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 0, height: 0, borderLeft: '13px solid transparent', borderRight: '13px solid transparent', borderBottom: `21px solid ${GRAY}` }} />
+            <h1 style={{ fontFamily: "'Oswald', sans-serif", fontSize: 22, fontWeight: 700, margin: 0, color: WHITE, letterSpacing: '-0.01em' }}>KetoTrack</h1>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button onClick={() => setShowSettings(true)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 8, padding: '8px 10px', color: WHITE, fontSize: 15 }}>⚙</button>
+            <button onClick={share} style={{ background: 'rgba(255,255,255,0.18)', border: 'none', borderRadius: 20, padding: '8px 13px', color: WHITE, fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 15 }}>⤴</span> Share
+            </button>
+          </div>
+        </div>
+
+        <div style={{ maxWidth: 480, margin: '18px auto 0', display: 'flex', alignItems: 'center', gap: 4 }}>
+          <button onClick={() => setWeekAnchor(iso(addDays(startOfWeek(weekAnchor), -7)))} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', padding: 2, fontSize: 16 }}>‹</button>
+          <div style={{ flex: 1, display: 'flex', justifyContent: 'space-between' }}>
+            {weekDays.map(d => {
+              const dISO = iso(d);
+              const isSelected = dISO === selectedDate;
+              const isToday = dISO === todayISO();
+              return (
+                <button key={dISO} onClick={() => setSelectedDate(dISO)} style={{ background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
+                  <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.6)', fontWeight: 600 }}>{dayLabel(d)}</span>
+                  <span style={{ width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: isSelected ? WHITE : 'transparent', border: isToday && !isSelected ? '1.5px dashed rgba(255,255,255,0.6)' : 'none', color: isSelected ? BURGUNDY : WHITE, fontSize: 12, fontWeight: 700 }}>{d.getDate()}</span>
+                </button>
+              );
+            })}
+          </div>
+          <button onClick={() => setWeekAnchor(iso(addDays(startOfWeek(weekAnchor), 7)))} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', padding: 2, fontSize: 16 }}>›</button>
+        </div>
+      </div>
+
+      <div style={{ maxWidth: 480, margin: '0 auto', padding: '20px 20px 0', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+        {showInstallCard && (
+          <div className="banner" style={{ background: '#F6F1F2', borderColor: BORDER }}>
+            <span style={{ fontSize: 13, color: TEXT }}>📱 Add KetoTrack to your Home Screen so it opens like a real app.</span>
+            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+              <button className="pill" onClick={() => setShowHome(true)}>Show me</button>
+              <button onClick={() => persistDismissed({ ...dismissed, install: true })} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 16 }}>✕</button>
+            </div>
+          </div>
+        )}
+
+        {showFridayReminder && (
+          <div className="banner">
+            <span style={{ fontSize: 13, color: '#7A4A1F' }}>It's Friday — log this week's weigh-in.</span>
+            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+              <button className="pill" style={{ background: '#B8721F' }} onClick={() => setShowWeightForm(true)}>Log</button>
+              <button onClick={() => persistDismissed({ ...dismissed, friday: todayISO() })} style={{ background: 'none', border: 'none', color: '#7A4A1F', fontSize: 16 }}>✕</button>
+            </div>
+          </div>
+        )}
+        {showBpReminder && (
+          <div className="banner">
+            <span style={{ fontSize: 13, color: '#7A4A1F' }}>Time to check &amp; log your blood pressure this month.</span>
+            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+              <button className="pill" style={{ background: '#B8721F' }} onClick={() => setShowBpForm(true)}>Log</button>
+              <button onClick={() => persistDismissed({ ...dismissed, bp: monthKey(todayISO()) })} style={{ background: 'none', border: 'none', color: '#7A4A1F', fontSize: 16 }}>✕</button>
+            </div>
+          </div>
+        )}
+
+        <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 15, fontWeight: 600, color: WHITE }}>{fmtHeader(selectedDate)}</div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <SmallStat label="Protein" emoji="🥩" value={totals.protein} target={targets.protein} unit="g" kind="floor" />
+          <SmallStat label="Net Carbs" emoji="🌾" value={totals.netCarbs} target={targets.netCarbs} unit="g" kind="ceiling" />
+          <SmallStat label="Calories" emoji="🔥" value={totals.calories} target={targets.calories} unit="" kind="ceiling" />
+          <SmallStat label="Fat" emoji="💧" value={totals.fat} target={targets.fat} unit="g" kind="floor" />
+        </div>
+
+        <div className="card">
+          <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600, marginBottom: 10 }}>Water</div>
+          <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 30, fontWeight: 700, color: statColor(dayData.water, targets.water, 'floor') }}>{dayData.water}<span style={{ fontSize: 13, color: MUTED, fontWeight: 500 }}> oz</span></div>
+          <div style={{ fontSize: 12, color: MUTED, marginBottom: 12 }}>goal {targets.water} oz</div>
+          <div style={{ display: 'flex', gap: 5 }}>
+            {[...Array(10)].map((_, i) => { const amt = (i + 1) * 10; const filled = amt <= dayData.water; return <button key={i} onClick={() => setWater(amt)} style={{ flex: 1, height: 26, borderRadius: 5, border: 'none', background: filled ? statColor(dayData.water, targets.water, 'floor') : TRACK_BG }} />; })}
+          </div>
+        </div>
+
+        {MEALS.map(m => (
+          <MealSection key={m.key} meal={m} foods={dayData.meals[m.key] || []} commonFoods={commonFoods.filter(cf => cf.mealType === m.key).sort((a, b) => (b.count || 1) - (a.count || 1))}
+            onAdd={() => setAddFoodMeal(m.key)} onAiAdd={() => setAiMeal(m.key)} onRemove={(id) => removeFood(m.key, id)}
+            onEdit={(food) => setEditFood({ mealKey: m.key, food })} onToggleCommon={(cf) => toggleCommonFood(m.key, cf)} />
+        ))}
+
+        <div className="card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>Weight Trend</span>
+            <button className="pill" onClick={() => setShowWeightForm(true)}>+ Log</button>
+          </div>
+          {latestWeight ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
+                <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 30, fontWeight: 700 }}>{latestWeight}</span>
+                <span style={{ color: MUTED, fontSize: 13 }}>lbs · goal {goalWeight}</span>
+                {startWeight && startWeight !== latestWeight && <span style={{ color: '#16A34A', fontSize: 13, marginLeft: 'auto' }}>📉 {(startWeight - latestWeight).toFixed(1)}</span>}
+              </div>
+              <WeightChart data={weightLog} goal={goalWeight} />
+            </>
+          ) : <div style={{ color: MUTED, fontSize: 13 }}>No weigh-ins logged yet.</div>}
+        </div>
+
+        <div className="card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>♥ Blood Pressure</span>
+            <button className="pill" onClick={() => setShowBpForm(true)}>+ Log</button>
+          </div>
+          {latestBp ? (
+            <div><span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 26, fontWeight: 700 }}>{latestBp.systolic}/{latestBp.diastolic}</span><span style={{ fontSize: 12, color: MUTED, marginLeft: 8 }}>last logged {latestBp.date}</span></div>
+          ) : <div style={{ color: MUTED, fontSize: 13 }}>Not logged yet.</div>}
+        </div>
+
+        <div className="card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>Training</span>
+            <button className="pill" onClick={() => setShowAddWorkout(true)}>+ Add</button>
+          </div>
+          {dayData.workouts.length === 0 ? <div style={{ color: MUTED, fontSize: 13 }}>No sessions logged.</div> : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {dayData.workouts.map(w => {
+                const pace = w.distance && w.duration ? (w.duration / w.distance).toFixed(1) : null;
+                return (
+                  <div key={w.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: `1px solid ${BORDER}` }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span>🏋</span>
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 500 }}>{w.type}</div>
+                        <div style={{ fontSize: 11.5, color: MUTED }}>{w.duration} min{w.distance ? ` · ${w.distance} mi` : ''}{pace ? ` · ${pace} min/mi` : ''}{w.activeCalories ? ` · ${w.activeCalories} cal` : ''}{w.avgHeartRate ? ` · ${w.avgHeartRate} bpm avg` : ''}</div>
+                        {w.notes && <div style={{ fontSize: 11.5, color: MUTED }}>{w.notes}</div>}
+                      </div>
+                    </div>
+                    <button onClick={() => removeWorkout(w.id)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 15 }}>✕</button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>History</span>
+            <button className="ghostbtn" onClick={() => setShowHistory(true)}>📊 View Graphs</button>
+          </div>
+        </div>
+      </div>
+
+      {addFoodMeal && <FoodModal mealLabel={MEALS.find(m => m.key === addFoodMeal).label} onClose={() => setAddFoodMeal(null)}
+        onSave={(food) => { addFood(addFoodMeal, food); setAddFoodMeal(null); }} />}
+      {aiMeal && <AIAddModal mealLabel={MEALS.find(m => m.key === aiMeal).label} onClose={() => setAiMeal(null)}
+        onSave={(foods) => { addFoodBatch(aiMeal, foods, true); setAiMeal(null); }} />}
+      {editFood && <EditFoodModal food={editFood.food} onClose={() => setEditFood(null)}
+        onSave={(updates) => { updateFood(editFood.mealKey, editFood.food.id, updates); setEditFood(null); }}
+        onDelete={() => { removeFood(editFood.mealKey, editFood.food.id); setEditFood(null); }} />}
+      {showAddWorkout && <WorkoutModal onClose={() => setShowAddWorkout(false)} onSave={(w) => { addWorkout(w); setShowAddWorkout(false); }} />}
+      {showWeightForm && <WeightModal onClose={() => setShowWeightForm(false)} onSave={(entry) => { persistWeight([...weightLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowWeightForm(false); }} />}
+      {showBpForm && <BpModal onClose={() => setShowBpForm(false)} onSave={(entry) => { persistBp([...bpLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowBpForm(false); }} />}
+      {showSettings && <SettingsModal profile={profile} onClose={() => setShowSettings(false)} onSave={(p) => { save('kt-profile', p); setProfile(p); setShowSettings(false); }} onExport={exportCSV} onShowHome={() => { setShowSettings(false); setShowHome(true); }} />}
+      {showHistory && <HistoryModal targets={targets} weightLog={weightLog} onClose={() => setShowHistory(false)} />}
+      {showHome && <Modal title="Add to Home Screen" onClose={() => setShowHome(false)}><HomeScreenSteps /></Modal>}
+      {popup && <MacroPopup data={popup} onClose={() => setPopup(null)} />}
+    </div>
+  );
+}
+
+function ProfileSetup({ onDone }) {
+  const [f, setF] = useState({ name: '', age: '', height: '', currentWeight: '', goalWeight: '' });
+  const [t, setT] = useState(DEFAULT_TARGETS);
+  const num = (v) => parseFloat(v) || 0;
+
+  useEffect(() => {
+    const w = num(f.currentWeight);
+    if (w > 0) setT({ calories: 1800, protein: Math.round(w * 0.85), netCarbs: 25, fat: 80, water: Math.round(w / 2) });
+  }, [f.currentWeight]);
+
+  const submit = () => {
+    if (!f.name || !f.currentWeight) return;
+    onDone({ name: f.name, age: num(f.age), height: f.height, currentWeight: num(f.currentWeight), goalWeight: num(f.goalWeight) || num(f.currentWeight), targets: t });
+  };
+
+  return (
+    <div style={{ background: GRAY, minHeight: '100vh', fontFamily: "'Inter', sans-serif", color: TEXT, padding: '30px 20px' }}>
+      <div style={{ maxWidth: 440, margin: '0 auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          <div style={{ width: 0, height: 0, borderLeft: '13px solid transparent', borderRight: '13px solid transparent', borderBottom: `21px solid ${BURGUNDY}` }} />
+          <h1 style={{ fontFamily: "'Oswald', sans-serif", fontSize: 24, fontWeight: 700, color: WHITE, margin: 0 }}>Welcome to KetoTrack</h1>
+        </div>
+        <p style={{ color: '#C9C6CA', fontSize: 13, marginBottom: 20 }}>Set up your profile to get started.</p>
+
+        <div style={{ background: WHITE, borderRadius: 14, padding: 20 }}>
+          <Field label="Name"><input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="Your name" /></Field>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <Field label="Age"><input type="number" value={f.age} onChange={e => setF({ ...f, age: e.target.value })} /></Field>
+            <Field label="Height"><input value={f.height} onChange={e => setF({ ...f, height: e.target.value })} placeholder={"e.g. 5'10\""} /></Field>
+            <Field label="Current weight (lbs)"><input type="number" value={f.currentWeight} onChange={e => setF({ ...f, currentWeight: e.target.value })} /></Field>
+            <Field label="Goal weight (lbs)"><input type="number" value={f.goalWeight} onChange={e => setF({ ...f, goalWeight: e.target.value })} /></Field>
+          </div>
+
+          <div style={{ fontSize: 12, fontWeight: 600, color: BURGUNDY, marginTop: 14, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Daily Targets — suggested, edit as you like</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <Field label="Calories"><input type="number" value={t.calories} onChange={e => setT({ ...t, calories: num(e.target.value) })} /></Field>
+            <Field label="Protein floor (g)"><input type="number" value={t.protein} onChange={e => setT({ ...t, protein: num(e.target.value) })} /></Field>
+            <Field label="Net carb ceiling (g)"><input type="number" value={t.netCarbs} onChange={e => setT({ ...t, netCarbs: num(e.target.value) })} /></Field>
+            <Field label="Fat floor (g)"><input type="number" value={t.fat} onChange={e => setT({ ...t, fat: num(e.target.value) })} /></Field>
+            <Field label="Water floor (oz)"><input type="number" value={t.water} onChange={e => setT({ ...t, water: num(e.target.value) })} /></Field>
+          </div>
+
+          <PrimaryButton onClick={submit} label="Start Tracking" />
+        </div>
+
+        <div style={{ marginTop: 16, padding: '12px 14px', background: 'rgba(255,255,255,0.08)', borderRadius: 10, fontSize: 12, color: '#D9D6DA', lineHeight: 1.5 }}>
+          Your data is saved only in this device's browser — it isn't backed up anywhere else. Clearing your browser data, or switching to a different phone or browser, will erase your history. Use the export option in Settings to back up your data periodically.
+        </div>
+
+        <div style={{ marginTop: 16, padding: '14px 16px', background: WHITE, borderRadius: 12 }}>
+          <div style={{ fontFamily: "'Oswald', sans-serif", fontWeight: 700, fontSize: 13, color: BURGUNDY, marginBottom: 10 }}>📱 Add KetoTrack to Your Home Screen</div>
+          <HomeScreenSteps />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MealSection({ meal, foods, commonFoods, onAdd, onAiAdd, onRemove, onEdit, onToggleCommon }) {
+  const loggedCommonIds = new Set(foods.filter(f => f.sourceId).map(f => f.sourceId));
+  return (
+    <div className="card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>{meal.emoji}</span>
+          <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 14, fontWeight: 600, color: TEXT }}>{meal.label}</span>
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={onAiAdd} style={{ background: '#5F6368', border: 'none', borderRadius: 8, padding: '7px 12px', color: WHITE, display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, fontWeight: 700 }}>✨ Smart Add</button>
+          <button className="pill" onClick={onAdd}>+ Log</button>
+        </div>
+      </div>
+
+      {commonFoods.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: foods.length ? 12 : 0, paddingBottom: foods.length ? 12 : 0, borderBottom: foods.length ? `1px solid ${BORDER}` : 'none' }}>
+          {commonFoods.slice(0, 8).map(cf => <Checkbox key={cf.id} checked={loggedCommonIds.has(cf.id)} onClick={() => onToggleCommon(cf)} label={`${cf.name} — ${Math.round(cf.protein)}g P · ${Math.max(0, Math.round(cf.carbs - cf.fiber))}g net C`} />)}
+        </div>
+      )}
+
+      {foods.length === 0 ? (commonFoods.length === 0 && <div style={{ color: MUTED, fontSize: 13 }}>Nothing logged.</div>) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {foods.map(f => {
+            const e = effective(f);
+            const pct = f.percent ?? 100;
+            return (
+              <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0' }}>
+                <button onClick={() => onEdit(f)} style={{ background: 'none', border: 'none', textAlign: 'left', flex: 1 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 5 }}>
+                    {f.name}{f.estimated && <span style={{ color: '#B8721F' }}>*</span>}{pct !== 100 && <span style={{ fontSize: 11, color: MUTED, fontWeight: 400 }}>({pct}%)</span>}
+                    <span style={{ fontSize: 11, color: '#B8B5BD' }}>✎</span>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: MUTED }}>{Math.round(e.protein)}g P · {Math.max(0, Math.round(e.carbs - e.fiber))}g net C · {Math.round(e.fat)}g F · {Math.round(e.calories)} cal</div>
+                </button>
+                <button onClick={() => onRemove(f.id)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 14 }}>✕</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MacroPopup({ data, onClose }) {
+  const carbGood = !data.carbs.over;
+  const proteinGood = !data.protein.over;
+  return (
+    <Modal title="Meal Logged" onClose={onClose}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ padding: 12, borderRadius: 10, background: carbGood ? '#EAF3EA' : '#FBEAEA' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: carbGood ? '#2E7D32' : RED }}>Carbs: {Math.round(data.carbs.value)}g — {carbGood ? `nice, under 1/3 of your daily goal (${Math.round(data.carbs.third)}g)` : `over 1/3 of your daily goal (${Math.round(data.carbs.third)}g)`}</div>
+        </div>
+        <div style={{ padding: 12, borderRadius: 10, background: proteinGood ? '#EAF3EA' : '#FBEAEA' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: proteinGood ? '#2E7D32' : RED }}>Protein: {Math.round(data.protein.value)}g — {proteinGood ? `nice hit toward 1/3 of your daily goal (${Math.round(data.protein.third)}g)` : `under 1/3 of your daily goal (${Math.round(data.protein.third)}g)`}</div>
+        </div>
+      </div>
+      <PrimaryButton onClick={onClose} label="Got it" />
+    </Modal>
+  );
+}
+
+function FoodModal({ mealLabel, onClose, onSave }) {
+  const [f, setF] = useState({ name: '', protein: '', carbs: '', fiber: '', fat: '', calories: '' });
+  const num = (v) => parseFloat(v) || 0;
+  const submit = () => { if (!f.name) return; onSave({ name: f.name, protein: num(f.protein), carbs: num(f.carbs), fiber: num(f.fiber), fat: num(f.fat), calories: num(f.calories) }); };
+  return (
+    <Modal title={`Log ${mealLabel}`} onClose={onClose}>
+      <Field label="Food name"><input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="e.g. Grilled chicken thigh" autoFocus /></Field>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <Field label="Protein (g)"><input type="number" inputMode="decimal" value={f.protein} onChange={e => setF({ ...f, protein: e.target.value })} /></Field>
+        <Field label="Fat (g)"><input type="number" inputMode="decimal" value={f.fat} onChange={e => setF({ ...f, fat: e.target.value })} /></Field>
+        <Field label="Total carbs (g)"><input type="number" inputMode="decimal" value={f.carbs} onChange={e => setF({ ...f, carbs: e.target.value })} /></Field>
+        <Field label="Fiber (g)"><input type="number" inputMode="decimal" value={f.fiber} onChange={e => setF({ ...f, fiber: e.target.value })} /></Field>
+      </div>
+      <Field label="Calories"><input type="number" inputMode="decimal" value={f.calories} onChange={e => setF({ ...f, calories: e.target.value })} /></Field>
+      <PrimaryButton onClick={submit} />
+    </Modal>
+  );
+}
+
+// Unified AI Add — describe in text, or take/upload a photo. Calls /api/estimate
+// (a Cloudflare Pages Function backed by Gemini). Falls back gracefully with a
+// clear message if the function isn't configured with an API key yet.
+function AIAddModal({ mealLabel, onClose, onSave }) {
+  const [tab, setTab] = useState('text');
+  const [text, setText] = useState('');
+  const [photo, setPhoto] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const fileRef = useRef();
+
+  const handleFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setPhoto(reader.result);
+    reader.readAsDataURL(file);
+  };
+
+  const submit = async () => {
+    setError(null);
+    if (tab === 'text' && !text.trim()) return;
+    if (tab === 'photo' && !photo) return;
+    setLoading(true);
+    try {
+      const res = await fetch('/api/estimate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(tab === 'text' ? { mode: 'text', text } : { mode: 'photo', image: photo }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.error === 'not_configured') setError("AI estimation isn't set up yet on this deployment — add a GEMINI_API_KEY to enable it, or log this manually for now.");
+        else setError(data.message || 'Something went wrong estimating this. Try again or log it manually.');
+        setLoading(false);
+        return;
+      }
+      if (!data.foods || !data.foods.length) {
+        setError("Couldn't identify any foods from that — try being more specific, or log it manually.");
+        setLoading(false);
+        return;
+      }
+      onSave(data.foods);
+    } catch (e) {
+      setError('Could not reach the AI estimator. Check your connection and try again.');
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Modal title={`Smart Add — ${mealLabel}`} onClose={onClose}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+        <button onClick={() => setTab('text')} style={{ flex: 1, padding: 10, borderRadius: 8, border: `1.5px solid ${tab === 'text' ? BURGUNDY : BORDER}`, background: tab === 'text' ? '#F6F1F2' : WHITE, color: tab === 'text' ? BURGUNDY : MUTED, fontWeight: 600, fontSize: 13 }}>Describe It</button>
+        <button onClick={() => setTab('photo')} style={{ flex: 1, padding: 10, borderRadius: 8, border: `1.5px solid ${tab === 'photo' ? BURGUNDY : BORDER}`, background: tab === 'photo' ? '#F6F1F2' : WHITE, color: tab === 'photo' ? BURGUNDY : MUTED, fontWeight: 600, fontSize: 13 }}>Photo</button>
+      </div>
+
+      {tab === 'text' ? (
+        <Field label="What did you eat?">
+          <textarea value={text} onChange={e => setText(e.target.value)} placeholder={'e.g. "Core Power 42g protein shake and a Sonic small chicken nugget"'}
+            rows={3} style={{ fontFamily: 'inherit', background: '#FAFAFB', border: `1px solid ${BORDER}`, color: TEXT, borderRadius: 8, padding: '10px 11px', fontSize: 14, width: '100%', resize: 'vertical' }} autoFocus />
+        </Field>
+      ) : (
+        <div onClick={() => fileRef.current.click()} style={{ border: `1.5px dashed ${BORDER}`, borderRadius: 10, padding: photo ? 0 : 24, textAlign: 'center', marginBottom: 14, overflow: 'hidden', cursor: 'pointer' }}>
+          {photo ? <img src={photo} alt="meal" style={{ width: '100%', display: 'block' }} /> : <div style={{ color: MUTED, fontSize: 13 }}>📷<div>Tap to add a photo</div></div>}
+        </div>
+      )}
+      <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleFile} style={{ display: 'none' }} />
+
+      <div style={{ background: '#FDF2E9', border: '1px solid #F2D9BC', borderRadius: 10, padding: 10, fontSize: 12, color: '#7A4A1F', marginTop: 4, marginBottom: 4 }}>
+        Each food gets logged as its own entry, marked with an asterisk (*) as an estimate — edit any of them afterward to confirm or adjust the numbers.
+      </div>
+
+      {error && <div style={{ background: '#FBEAEA', border: '1px solid #F5C6C6', borderRadius: 10, padding: 10, fontSize: 12.5, color: RED, marginTop: 10 }}>{error}</div>}
+
+      <PrimaryButton onClick={submit} disabled={loading} label={loading ? 'Estimating…' : 'Add to ' + mealLabel} />
+    </Modal>
+  );
+}
+
+function EditFoodModal({ food, onClose, onSave, onDelete }) {
+  const [f, setF] = useState({ ...food });
+  const num = (v) => parseFloat(v) || 0;
+  const e = effective(f);
+  const submit = () => onSave({ name: f.name, protein: num(f.protein), carbs: num(f.carbs), fiber: num(f.fiber), fat: num(f.fat), calories: num(f.calories), percent: num(f.percent) || 100, estimated: f.confirmEstimate ? false : f.estimated });
+  return (
+    <Modal title="Edit Food" onClose={onClose}>
+      <Field label="Food name"><input value={f.name} onChange={ev => setF({ ...f, name: ev.target.value })} /></Field>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <Field label="Protein (g)"><input type="number" value={f.protein} onChange={ev => setF({ ...f, protein: ev.target.value })} /></Field>
+        <Field label="Fat (g)"><input type="number" value={f.fat} onChange={ev => setF({ ...f, fat: ev.target.value })} /></Field>
+        <Field label="Total carbs (g)"><input type="number" value={f.carbs} onChange={ev => setF({ ...f, carbs: ev.target.value })} /></Field>
+        <Field label="Fiber (g)"><input type="number" value={f.fiber} onChange={ev => setF({ ...f, fiber: ev.target.value })} /></Field>
+      </div>
+      <Field label="Calories"><input type="number" value={f.calories} onChange={ev => setF({ ...f, calories: ev.target.value })} /></Field>
+      <Field label="% eaten (e.g. 75 if you didn't finish it)"><input type="number" value={f.percent ?? 100} onChange={ev => setF({ ...f, percent: ev.target.value })} /></Field>
+      <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>Logged amount: {Math.round(e.protein)}g P · {Math.max(0, Math.round(e.carbs - e.fiber))}g net C · {Math.round(e.calories)} cal</div>
+      {f.estimated && <Checkbox checked={!!f.confirmEstimate} onClick={() => setF({ ...f, confirmEstimate: !f.confirmEstimate })} label="These numbers are confirmed accurate (clear the *)" />}
+      <PrimaryButton onClick={submit} />
+      <button onClick={onDelete} style={{ width: '100%', background: 'none', border: 'none', color: RED, fontSize: 13, fontWeight: 600, marginTop: 10, padding: 8 }}>Delete Entry</button>
+    </Modal>
+  );
+}
+
+function WorkoutModal({ onClose, onSave }) {
+  const [w, setW] = useState({ type: 'Strength', duration: '', distance: '', activeCalories: '', avgHeartRate: '', notes: '' });
+  const num = (v) => parseFloat(v) || 0;
+  const submit = () => { if (!w.duration) return; onSave({ type: w.type, duration: num(w.duration), distance: num(w.distance) || null, activeCalories: num(w.activeCalories) || null, avgHeartRate: num(w.avgHeartRate) || null, notes: w.notes }); };
+  return (
+    <Modal title="Log Training" onClose={onClose}>
+      <Field label="Type"><select value={w.type} onChange={e => setW({ ...w, type: e.target.value })}><option>Strength</option><option>Cardio</option><option>Walk</option><option>Mobility</option><option>Mixed</option></select></Field>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <Field label="Duration (min)"><input type="number" value={w.duration} onChange={e => setW({ ...w, duration: e.target.value })} /></Field>
+        <Field label="Distance (mi)"><input type="number" inputMode="decimal" value={w.distance} onChange={e => setW({ ...w, distance: e.target.value })} placeholder="optional" /></Field>
+        <Field label="Active calories burned"><input type="number" value={w.activeCalories} onChange={e => setW({ ...w, activeCalories: e.target.value })} placeholder="from Apple Watch" /></Field>
+        <Field label="Avg heart rate (bpm)"><input type="number" value={w.avgHeartRate} onChange={e => setW({ ...w, avgHeartRate: e.target.value })} placeholder="from Apple Watch" /></Field>
+      </div>
+      <Field label="Notes (optional)"><input value={w.notes} onChange={e => setW({ ...w, notes: e.target.value })} placeholder="e.g. legs, heavy" /></Field>
+      <PrimaryButton onClick={submit} />
+    </Modal>
+  );
+}
+
+function WeightModal({ onClose, onSave }) {
+  const [weight, setWeight] = useState(''); const [note, setNote] = useState('');
+  const submit = () => { if (!weight) return; onSave({ date: todayISO(), weight: parseFloat(weight), note }); };
+  return (
+    <Modal title="Log Weigh-In" onClose={onClose}>
+      <Field label="Weight (lbs)"><input type="number" inputMode="decimal" value={weight} onChange={e => setWeight(e.target.value)} autoFocus /></Field>
+      <Field label="Note (optional)"><input value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. energy good, sleep rough" /></Field>
+      <PrimaryButton onClick={submit} />
+    </Modal>
+  );
+}
+
+function BpModal({ onClose, onSave }) {
+  const [systolic, setSystolic] = useState(''); const [diastolic, setDiastolic] = useState('');
+  const submit = () => { if (!systolic || !diastolic) return; onSave({ date: todayISO(), systolic: parseInt(systolic), diastolic: parseInt(diastolic) }); };
+  return (
+    <Modal title="Log Blood Pressure" onClose={onClose}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <Field label="Systolic"><input type="number" value={systolic} onChange={e => setSystolic(e.target.value)} autoFocus /></Field>
+        <Field label="Diastolic"><input type="number" value={diastolic} onChange={e => setDiastolic(e.target.value)} /></Field>
+      </div>
+      <PrimaryButton onClick={submit} />
+    </Modal>
+  );
+}
+
+function SettingsModal({ profile, onClose, onSave, onExport, onShowHome }) {
+  const [t, setT] = useState(profile.targets);
+  const [goalWeight, setGoalWeight] = useState(profile.goalWeight);
+  const num = (v) => parseFloat(v) || 0;
+  return (
+    <Modal title="Settings" onClose={onClose}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: BURGUNDY, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Daily Targets</div>
+      <Field label="Protein floor (g)"><input type="number" value={t.protein} onChange={e => setT({ ...t, protein: num(e.target.value) })} /></Field>
+      <Field label="Fat floor (g)"><input type="number" value={t.fat} onChange={e => setT({ ...t, fat: num(e.target.value) })} /></Field>
+      <Field label="Net carb ceiling (g)"><input type="number" value={t.netCarbs} onChange={e => setT({ ...t, netCarbs: num(e.target.value) })} /></Field>
+      <Field label="Calorie ceiling"><input type="number" value={t.calories} onChange={e => setT({ ...t, calories: num(e.target.value) })} /></Field>
+      <Field label="Water floor (oz)"><input type="number" value={t.water} onChange={e => setT({ ...t, water: num(e.target.value) })} /></Field>
+      <Field label="Goal weight (lbs)"><input type="number" value={goalWeight} onChange={e => setGoalWeight(num(e.target.value))} /></Field>
+      <PrimaryButton onClick={() => onSave({ ...profile, targets: t, goalWeight })} label="Save Targets" />
+
+      <div style={{ height: 1, background: BORDER, margin: '18px 0' }} />
+      <button className="ghostbtn" onClick={onExport} style={{ width: '100%', justifyContent: 'center', padding: 12, marginBottom: 10 }}>⬇ Export Data (CSV)</button>
+      <button className="ghostbtn" onClick={onShowHome} style={{ width: '100%', justifyContent: 'center', padding: 12 }}>📱 Add to Home Screen</button>
+
+      <div style={{ marginTop: 16, padding: '10px 12px', background: '#F6F1F2', borderRadius: 10, fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>Data is saved only in this device's browser. Export regularly to keep a backup.</div>
+    </Modal>
+  );
+}
+
+function WeightChart({ data, goal }) {
+  const chartData = data.map(d => ({ label: d.date.slice(5), value: d.weight }));
+  if (chartData.length < 2) return <div style={{ color: MUTED, fontSize: 12 }}>Log a few more weigh-ins to see your trend.</div>;
+  return <SimpleLineChart data={chartData} target={goal} />;
+}
+
+function SimpleLineChart({ data, target }) {
+  const vals = data.map(d => d.value).filter(v => v !== null && v !== undefined);
+  if (vals.length < 2) return <div style={{ color: MUTED, fontSize: 12 }}>Not enough data yet.</div>;
+  const min = Math.min(...vals, target ?? Infinity), max = Math.max(...vals, target ?? -Infinity);
+  const range = max - min || 1;
+  const w = 440, h = 180, pad = 20;
+  const step = (w - pad * 2) / (data.length - 1);
+  const pts = data.map((d, i) => {
+    const x = pad + i * step;
+    const y = d.value == null ? null : h - pad - ((d.value - min) / range) * (h - pad * 2);
+    return { x, y, label: d.label };
+  });
+  const line = pts.filter(p => p.y !== null).map(p => `${p.x},${p.y}`).join(' ');
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', height: 180 }}>
+      {target != null && <line x1={pad} y1={h - pad - ((target - min) / range) * (h - pad * 2)} x2={w - pad} y2={h - pad - ((target - min) / range) * (h - pad * 2)} stroke="#D9D6E0" strokeDasharray="4 4" strokeWidth={1} />}
+      <polyline points={line} fill="none" stroke={BURGUNDY} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+      {pts.map((p, i) => p.y !== null && <circle key={i} cx={p.x} cy={p.y} r={3} fill={BURGUNDY} />)}
+      {pts.map((p, i) => (i % Math.ceil(pts.length / 6) === 0) && <text key={'t' + i} x={p.x} y={h - 4} fontSize="9" fill={MUTED} textAnchor="middle">{p.label}</text>)}
+    </svg>
+  );
+}
+function SimpleBarChart({ data, colorFn }) {
+  const vals = data.map(d => d.value);
+  const max = Math.max(...vals, 1);
+  const w = 440, h = 180, pad = 20, gap = 6;
+  const barW = (w - pad * 2) / data.length - gap;
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', height: 180 }}>
+      {data.map((d, i) => {
+        const barH = (d.value / max) * (h - pad * 2);
+        const x = pad + i * ((w - pad * 2) / data.length) + gap / 2;
+        const y = h - pad - barH;
+        return (
+          <g key={i}>
+            <rect x={x} y={y} width={barW} height={barH} rx={3} fill={colorFn ? colorFn(d) : BURGUNDY} />
+            <text x={x + barW / 2} y={h - 4} fontSize="9" fill={MUTED} textAnchor="middle">{d.label}</text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+const METRICS = [
+  { key: 'calories', label: 'Calories', kind: 'ceiling' },
+  { key: 'protein', label: 'Protein', kind: 'floor' },
+  { key: 'netCarbs', label: 'Net Carbs', kind: 'ceiling' },
+  { key: 'fat', label: 'Fat', kind: 'floor' },
+  { key: 'weight', label: 'Weight', kind: null },
+];
+
+function HistoryModal({ targets, weightLog, onClose }) {
+  const [metric, setMetric] = useState('calories');
+  const [range, setRange] = useState('week');
+  const [view, setView] = useState('trend');
+  const [chartData, setChartData] = useState(null);
+
+  const runQuery = () => {
+    const days = range === 'week' ? 7 : 30;
+    const dates = [...Array(days)].map((_, i) => iso(addDays(new Date(), -(days - 1 - i))));
+    let series;
+    if (metric === 'weight') {
+      const map = Object.fromEntries(weightLog.map(w => [w.date, w.weight]));
+      series = dates.map(d => ({ date: d, value: map[d] ?? null }));
+    } else {
+      series = dates.map(d => {
+        const parsed = load(DAY_KEY(d), null);
+        if (!parsed) return { date: d, value: 0 };
+        const foods = Object.values(parsed.meals || {}).flat();
+        const t = foods.reduce((acc, f) => { const e = effective(f); return { calories: acc.calories + e.calories, protein: acc.protein + e.protein, netCarbs: acc.netCarbs + Math.max(0, e.carbs - e.fiber), fat: acc.fat + e.fat }; }, { calories: 0, protein: 0, netCarbs: 0, fat: 0 });
+        return { date: d, value: t[metric] };
+      });
+    }
+    const target = metric === 'weight' ? null : targets[metric];
+    const kind = METRICS.find(m => m.key === metric).kind;
+    let output;
+    if (view === 'trend') output = series.map(s => ({ label: s.date.slice(5), value: s.value }));
+    else if (view === 'averages') {
+      const chunks = []; for (let i = 0; i < series.length; i += 7) chunks.push(series.slice(i, i + 7));
+      output = chunks.map((c, i) => { const vals = c.map(x => x.value).filter(v => v !== null); const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0; return { label: `Wk ${i + 1}`, value: Math.round(avg * 10) / 10 }; });
+    } else {
+      output = series.map(s => ({ label: s.date.slice(5), value: s.value ?? 0, met: target ? (kind === 'floor' ? s.value >= target : s.value <= target) : null }));
+    }
+    setChartData({ output, target, kind });
+  };
+
+  return (
+    <Modal title="History" onClose={onClose}>
+      <Field label="Metric"><select value={metric} onChange={e => { setMetric(e.target.value); setChartData(null); }}>{METRICS.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}</select></Field>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <Field label="Range"><select value={range} onChange={e => { setRange(e.target.value); setChartData(null); }}><option value="week">Week</option><option value="month">Month</option></select></Field>
+        <Field label="View"><select value={view} onChange={e => { setView(e.target.value); setChartData(null); }}><option value="trend">Daily trend</option><option value="averages">Weekly averages</option><option value="adherence">Adherence</option></select></Field>
+      </div>
+      <PrimaryButton onClick={runQuery} label="Show Graph" />
+      {chartData && (
+        <div style={{ marginTop: 20 }}>
+          {view === 'trend' ? (
+            <SimpleLineChart data={chartData.output} target={chartData.target} />
+          ) : (
+            <SimpleBarChart data={chartData.output} colorFn={view === 'adherence' ? (d => d.met === null ? BURGUNDY : (d.met ? BLUE : RED)) : null} />
+          )}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<KetoTrack />);
+</script>
+<script>
+  var code = document.getElementById('app-source').textContent;
+  var output = Babel.transform(code, { presets: [['react', { runtime: 'classic' }]] }).code;
+  (0, eval)(output);
+</script>
+</body>
+</html>
