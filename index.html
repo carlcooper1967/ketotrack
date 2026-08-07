@@ -175,6 +175,7 @@ function KetoTrack() {
   const [popup, setPopup] = useState(null);
   const [pickMealFor, setPickMealFor] = useState(null); // Your Regulars item awaiting meal choice
   const [editRegular, setEditRegular] = useState(null);
+  const [showRegulars, setShowRegulars] = useState(false);
 
   useEffect(() => {
     setProfile(load('kt-profile', null));
@@ -389,7 +390,10 @@ function KetoTrack() {
           </div>
         </div>
 
-        <RegularsSection regulars={regularsSorted} onPick={(r) => setPickMealFor(r)} onEdit={(r) => setEditRegular(r)} onDelete={deleteRegular} onTogglePin={togglePinRegular} />
+        <button onClick={() => setShowRegulars(true)} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: `1px solid ${BORDER}`, width: '100%', textAlign: 'left' }}>
+          <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>⭐ Your Regulars</span>
+          <span style={{ color: MUTED, fontSize: 13 }}>{commonFoods.length ? `${commonFoods.length} saved →` : 'None yet →'}</span>
+        </button>
 
         {MEALS.map(m => (
           <MealSection key={m.key} meal={m} foods={dayData.meals[m.key] || []}
@@ -459,6 +463,11 @@ function KetoTrack() {
         onSave={(updates) => { updateFood(editFood.mealKey, editFood.food.id, updates); setEditFood(null); }}
         onDelete={() => { removeFood(editFood.mealKey, editFood.food.id); setEditFood(null); }} />}
       {pickMealFor && <MealPickerModal item={pickMealFor} onClose={() => setPickMealFor(null)} onPick={(mealKey) => logRegularToMeal(pickMealFor, mealKey)} />}
+      {showRegulars && (
+        <Modal title="⭐ Your Regulars" onClose={() => setShowRegulars(false)}>
+          <RegularsList regulars={regularsSorted} onPick={(r) => { setShowRegulars(false); setPickMealFor(r); }} onEdit={(r) => { setShowRegulars(false); setEditRegular(r); }} onDelete={deleteRegular} onTogglePin={togglePinRegular} />
+        </Modal>
+      )}
       {editRegular && <EditRegularModal item={editRegular} onClose={() => setEditRegular(null)}
         onSave={(updates) => { updateRegular(editRegular.id, updates); setEditRegular(null); }} />}
       {showAddWorkout && <WorkoutModal onClose={() => setShowAddWorkout(false)} onSave={(w) => { addWorkout(w); setShowAddWorkout(false); }} />}
@@ -527,26 +536,25 @@ function ProfileSetup({ onDone }) {
 }
 
 // ---------- Your Regulars ----------
-function RegularsSection({ regulars, onPick, onEdit, onDelete, onTogglePin }) {
+function RegularsList({ regulars, onPick, onEdit, onDelete, onTogglePin }) {
   return (
-    <div className="card">
-      <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600, marginBottom: 10 }}>⭐ Your Regulars</div>
+    <div>
       {regulars.length === 0 ? (
         <div style={{ color: MUTED, fontSize: 13 }}>Log a few foods and they'll show up here for quick re-adding.</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {regulars.map(r => (
-            <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 0', borderBottom: `1px solid ${BORDER}` }}>
+            <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 0', borderBottom: `1px solid ${BORDER}` }}>
               <button onClick={() => onPick(r)} style={{ background: 'none', border: 'none', textAlign: 'left', flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 5 }}>
+                <div style={{ fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 5 }}>
                   {r.pinned && <span style={{ fontSize: 11 }}>📌</span>}
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
                 </div>
-                <div style={{ fontSize: 11.5, color: MUTED }}>{Math.round(r.protein)}g P · {Math.max(0, Math.round(r.carbs - r.fiber))}g net C</div>
+                <div style={{ fontSize: 12, color: MUTED }}>{Math.round(r.protein)}g P · {Math.max(0, Math.round(r.carbs - r.fiber))}g net C</div>
               </button>
-              <button onClick={() => onTogglePin(r.id)} style={{ background: 'none', border: 'none', color: r.pinned ? BURGUNDY : '#C9C6D1', fontSize: 14 }}>📌</button>
-              <button onClick={() => onEdit(r)} style={{ background: 'none', border: 'none', color: '#B8B5BD', fontSize: 13 }}>✎</button>
-              <button onClick={() => onDelete(r.id)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 14 }}>✕</button>
+              <button onClick={() => onTogglePin(r.id)} style={{ background: 'none', border: 'none', color: r.pinned ? BURGUNDY : '#C9C6D1', fontSize: 15 }}>📌</button>
+              <button onClick={() => onEdit(r)} style={{ background: 'none', border: 'none', color: '#B8B5BD', fontSize: 14 }}>✎</button>
+              <button onClick={() => onDelete(r.id)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 15 }}>✕</button>
             </div>
           ))}
         </div>
