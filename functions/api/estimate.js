@@ -4,27 +4,27 @@
 //
 // Requires an environment variable GEMINI_API_KEY to be set in the
 // Cloudflare Pages project (Settings -> Environment variables).
-
+ 
 const PROMPT_TEXT = `You are a nutrition estimator. The user will describe one or more foods they ate, possibly including brand names and restaurant items. Identify each distinct food item and estimate its nutrition.
-
+ 
 Respond with ONLY valid JSON (no markdown, no commentary), in this exact shape:
 {"foods":[{"name":"string","protein":number,"carbs":number,"fiber":number,"fat":number,"calories":number}]}
-
+ 
 All numeric values are grams (protein, carbs, fiber, fat) or kcal (calories), for the full portion described. If the user gives a quantity or size, use it. If unsure of an exact branded product, give your best reasonable estimate rather than refusing.`;
-
+ 
 const PROMPT_PHOTO = `You are a nutrition estimator. Look at this photo of a meal or food item and identify each distinct food you can see, estimating a realistic portion size for each.
-
+ 
 Respond with ONLY valid JSON (no markdown, no commentary), in this exact shape:
 {"foods":[{"name":"string","protein":number,"carbs":number,"fiber":number,"fat":number,"calories":number}]}
-
+ 
 All numeric values are grams (protein, carbs, fiber, fat) or kcal (calories), for the estimated portion shown. Give your best reasonable estimate rather than refusing.`;
-
+ 
 function extractJson(text) {
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) throw new Error('No JSON found in model response');
   return JSON.parse(match[0]);
 }
-
+ 
 export async function onRequestPost(context) {
   try {
     const { request, env } = context;
@@ -32,11 +32,11 @@ export async function onRequestPost(context) {
     if (!apiKey) {
       return new Response(JSON.stringify({ error: 'not_configured', message: 'GEMINI_API_KEY is not set on this Cloudflare Pages project yet.' }), { status: 501, headers: { 'Content-Type': 'application/json' } });
     }
-
+ 
     const body = await request.json();
     const mode = body.mode; // 'text' | 'photo'
     let parts;
-
+ 
     if (mode === 'text') {
       if (!body.text || !body.text.trim()) {
         return new Response(JSON.stringify({ error: 'bad_request', message: 'No text provided.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
@@ -58,8 +58,8 @@ export async function onRequestPost(context) {
     } else {
       return new Response(JSON.stringify({ error: 'bad_request', message: 'mode must be "text" or "photo".' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
     }
-
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+ 
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`;
     const geminiRes = await fetch(geminiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -68,18 +68,18 @@ export async function onRequestPost(context) {
         generationConfig: { temperature: 0.2 },
       }),
     });
-
+ 
     if (!geminiRes.ok) {
       const errText = await geminiRes.text();
       return new Response(JSON.stringify({ error: 'gemini_error', message: errText.slice(0, 500) }), { status: 502, headers: { 'Content-Type': 'application/json' } });
     }
-
+ 
     const geminiJson = await geminiRes.json();
     const text = geminiJson?.candidates?.[0]?.content?.parts?.[0]?.text || '';
     const parsed = extractJson(text);
-
+ 
     if (!Array.isArray(parsed.foods)) throw new Error('Malformed response shape');
-
+ 
     return new Response(JSON.stringify(parsed), { status: 200, headers: { 'Content-Type': 'application/json' } });
   } catch (e) {
     return new Response(JSON.stringify({ error: 'server_error', message: String(e && e.message || e) }), { status: 500, headers: { 'Content-Type': 'application/json' } });
