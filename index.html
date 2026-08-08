@@ -206,7 +206,14 @@ function KetoTrack() {
   const persistBp = (next) => { setBpLog(next); save('kt-bp-log', next); };
   const persistMeasure = (next) => { setMeasureLog(next); save('kt-measure-log', next); };
   const persistSleep = (next) => { setSleepLog(next); save('kt-sleep-log', next); };
-  const updateSleep = (id, updates) => persistSleep(sleepLog.map(s => s.id === id ? { ...s, ...updates } : s));
+  const updateSleep = (id, updates) => {
+    const idx = id ? sleepLog.findIndex(s => s.id === id) : -1;
+    const targetIdx = idx >= 0 ? idx : sleepLog.length - 1;
+    if (targetIdx < 0) return;
+    const next = [...sleepLog];
+    next[targetIdx] = { ...next[targetIdx], ...updates };
+    persistSleep(next);
+  };
   const persistCommon = (next) => { setCommonFoods(next); save('kt-common-foods', next); };
   const persistDismissed = (next) => { setDismissed(next); save('kt-dismissed', next); };
 
@@ -569,6 +576,11 @@ function KetoTrack() {
             </div>
           )}
         </div>
+
+        <a href="https://www.dietdoctor.com" target="_blank" rel="noopener noreferrer" className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textDecoration: 'none' }}>
+          <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>🔗 Keto Resources</span>
+          <span style={{ color: MUTED, fontSize: 13 }}>Diet Doctor →</span>
+        </a>
       </div>
 
       {addFoodMeal && <FoodModal mealLabel={MEALS.find(m => m.key === addFoodMeal).label} onClose={() => setAddFoodMeal(null)}
@@ -588,7 +600,7 @@ function KetoTrack() {
       )}
       {editRegular && <EditRegularModal item={editRegular} onClose={() => setEditRegular(null)}
         onSave={(updates) => { updateRegular(editRegular.id, updates); setEditRegular(null); }} />}
-      {showAddWorkout && <WorkoutModal onClose={() => setShowAddWorkout(false)} onSave={(w) => { addWorkout(w); setShowAddWorkout(false); }} />}
+      {showAddWorkout && <WorkoutModal profileWeight={profile.currentWeight} onClose={() => setShowAddWorkout(false)} onSave={(w) => { addWorkout(w); setShowAddWorkout(false); }} />}
       {showWeightForm && <WeightModal onClose={() => setShowWeightForm(false)} onSave={(entry) => { persistWeight([...weightLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowWeightForm(false); }} />}
       {showBpForm && <BpModal onClose={() => setShowBpForm(false)} onSave={(entry) => { persistBp([...bpLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowBpForm(false); }} />}
       {showMeasureForm && <MeasureModal onClose={() => setShowMeasureForm(false)} onSave={(entry) => { persistMeasure([...measureLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowMeasureForm(false); }} />}
@@ -945,7 +957,7 @@ function AIAddModal({ mealLabel, onClose, onSave }) {
               {photo ? <img src={photo} alt="upload" style={{ width: '100%', display: 'block' }} /> : <div style={{ color: MUTED, fontSize: 13 }}>{tab === 'receipt' ? '🧾' : '📷'}<div>Tap to {tab === 'receipt' ? 'photograph your receipt' : 'add a photo'}</div></div>}
             </div>
           )}
-          <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleFile} style={{ display: 'none' }} />
+          <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{ display: 'none' }} />
 
           {tab === 'receipt' && <div style={{ fontSize: 11.5, color: MUTED, marginTop: -8, marginBottom: 10 }}>Works best for a single fast-food receipt, not a full grocery haul.</div>}
 
@@ -1051,7 +1063,7 @@ function WorkoutAiModal({ onClose, onSave }) {
           <div onClick={() => fileRef.current.click()} style={{ border: `1.5px dashed ${BORDER}`, borderRadius: 10, padding: photo ? 0 : 24, textAlign: 'center', marginBottom: 14, overflow: 'hidden', cursor: 'pointer' }}>
             {photo ? <img src={photo} alt="watch screen" style={{ width: '100%', display: 'block' }} /> : <div style={{ color: MUTED, fontSize: 13 }}>⌚<div>Tap to photograph your Apple Watch workout summary</div></div>}
           </div>
-          <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleFile} style={{ display: 'none' }} />
+          <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{ display: 'none' }} />
           {error && <div style={{ background: '#FBEAEA', border: '1px solid #F5C6C6', borderRadius: 10, padding: 10, fontSize: 12.5, color: RED, marginTop: 10 }}>{error}</div>}
           <PrimaryButton onClick={search} disabled={loading || !photo} label={loading ? 'Reading…' : 'Search'} />
         </>
@@ -1063,10 +1075,10 @@ function WorkoutAiModal({ onClose, onSave }) {
           </Field>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <Field label="Duration (min)"><input type="number" value={result.duration} onChange={e => setResult({ ...result, duration: e.target.value })} /></Field>
-            <Field label="Distance (mi)"><input type="number" inputMode="decimal" value={result.distance} onChange={e => setResult({ ...result, distance: e.target.value })} /></Field>
+            {(result.type === 'Walk' || result.type === 'Cardio' || result.type === 'Cycling' || result.type === 'Mixed') && <Field label="Distance (mi)"><input type="number" inputMode="decimal" value={result.distance} onChange={e => setResult({ ...result, distance: e.target.value })} /></Field>}
             <Field label="Active calories"><input type="number" value={result.activeCalories} onChange={e => setResult({ ...result, activeCalories: e.target.value })} /></Field>
             <Field label="Avg heart rate"><input type="number" value={result.avgHeartRate} onChange={e => setResult({ ...result, avgHeartRate: e.target.value })} /></Field>
-            {result.type === 'Cycling' && <>
+            {(result.type === 'Cycling' || result.type === 'Mixed') && <>
               <Field label="Avg speed (mph)"><input type="number" inputMode="decimal" value={result.avgSpeed} onChange={e => setResult({ ...result, avgSpeed: e.target.value })} /></Field>
               <Field label="Cadence (rpm)"><input type="number" value={result.cadence} onChange={e => setResult({ ...result, cadence: e.target.value })} /></Field>
             </>}
@@ -1079,25 +1091,51 @@ function WorkoutAiModal({ onClose, onSave }) {
   );
 }
 
-function WorkoutModal({ onClose, onSave }) {
+function WorkoutModal({ profileWeight, onClose, onSave }) {
   const [w, setW] = useState({ type: 'Strength', duration: '', distance: '', weightLifted: '', reps: '', avgSpeed: '', cadence: '', activeCalories: '', avgHeartRate: '', notes: '' });
   const num = (v) => parseFloat(v) || 0;
-  const submit = () => { if (!w.duration) return; onSave({ type: w.type, duration: num(w.duration), distance: num(w.distance) || null, weightLifted: num(w.weightLifted) || null, reps: num(w.reps) || null, avgSpeed: num(w.avgSpeed) || null, cadence: num(w.cadence) || null, activeCalories: num(w.activeCalories) || null, avgHeartRate: num(w.avgHeartRate) || null, notes: w.notes }); };
+  const isCardioLike = w.type === 'Walk' || w.type === 'Cardio';
+  const isStrength = w.type === 'Strength';
+  const isCycling = w.type === 'Cycling';
+  const isMixed = w.type === 'Mixed';
+
+  const submit = () => {
+    if (!w.duration) return;
+    let activeCalories = num(w.activeCalories) || null;
+    if (!activeCalories && isStrength && profileWeight) {
+      const kg = profileWeight * 0.4536;
+      activeCalories = Math.round(6 * kg * (num(w.duration) / 60)); // MET 6 (vigorous lifting)
+    }
+    onSave({
+      type: w.type, duration: num(w.duration), notes: w.notes,
+      distance: (isCardioLike || isCycling || isMixed) ? (num(w.distance) || null) : null,
+      weightLifted: (isStrength || isMixed) ? (num(w.weightLifted) || null) : null,
+      reps: (isStrength || isMixed) ? (num(w.reps) || null) : null,
+      avgSpeed: (isCycling || isMixed) ? (num(w.avgSpeed) || null) : null,
+      cadence: (isCycling || isMixed) ? (num(w.cadence) || null) : null,
+      activeCalories, avgHeartRate: num(w.avgHeartRate) || null,
+    });
+  };
+
   return (
     <Modal title="Log Training" onClose={onClose}>
       <Field label="Type"><select value={w.type} onChange={e => setW({ ...w, type: e.target.value })}><option>Strength</option><option>Cardio</option><option>Walk</option><option>Cycling</option><option>Mobility</option><option>Mixed</option></select></Field>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <Field label="Duration (min)"><input type="number" value={w.duration} onChange={e => setW({ ...w, duration: e.target.value })} /></Field>
-        <Field label="Distance (mi)"><input type="number" inputMode="decimal" value={w.distance} onChange={e => setW({ ...w, distance: e.target.value })} placeholder="optional" /></Field>
-        {w.type === 'Cycling' && (
+        {(isCardioLike || isCycling || isMixed) && <Field label="Distance (mi)"><input type="number" inputMode="decimal" value={w.distance} onChange={e => setW({ ...w, distance: e.target.value })} placeholder="optional" /></Field>}
+        {(isCycling || isMixed) && (
           <>
             <Field label="Avg speed (mph)"><input type="number" inputMode="decimal" value={w.avgSpeed} onChange={e => setW({ ...w, avgSpeed: e.target.value })} /></Field>
             <Field label="Cadence (rpm)"><input type="number" value={w.cadence} onChange={e => setW({ ...w, cadence: e.target.value })} /></Field>
           </>
         )}
-        <Field label="Weight lifted (lbs)"><input type="number" inputMode="decimal" value={w.weightLifted} onChange={e => setW({ ...w, weightLifted: e.target.value })} placeholder="e.g. curls" /></Field>
-        <Field label="Reps"><input type="number" value={w.reps} onChange={e => setW({ ...w, reps: e.target.value })} /></Field>
-        <Field label="Active calories burned"><input type="number" value={w.activeCalories} onChange={e => setW({ ...w, activeCalories: e.target.value })} placeholder="from Apple Watch" /></Field>
+        {(isStrength || isMixed) && (
+          <>
+            <Field label="Weight lifted (lbs)"><input type="number" inputMode="decimal" value={w.weightLifted} onChange={e => setW({ ...w, weightLifted: e.target.value })} placeholder="e.g. curls" /></Field>
+            <Field label="Reps"><input type="number" value={w.reps} onChange={e => setW({ ...w, reps: e.target.value })} /></Field>
+          </>
+        )}
+        <Field label="Active calories burned"><input type="number" value={w.activeCalories} onChange={e => setW({ ...w, activeCalories: e.target.value })} placeholder={isStrength ? 'blank = auto-estimate' : 'from Apple Watch'} /></Field>
         <Field label="Avg heart rate (bpm)"><input type="number" value={w.avgHeartRate} onChange={e => setW({ ...w, avgHeartRate: e.target.value })} placeholder="from Apple Watch" /></Field>
       </div>
       <Field label="Notes (optional)"><input value={w.notes} onChange={e => setW({ ...w, notes: e.target.value })} placeholder="e.g. legs, heavy" /></Field>
@@ -1151,7 +1189,7 @@ function MeasureModal({ onClose, onSave }) {
 }
 
 function SleepModal({ initial, onClose, onSave }) {
-  const [asleep, setAsleep] = useState(initial?.asleep || ''); const [wake, setWake] = useState(initial?.wake || '');
+  const [asleep, setAsleep] = useState(initial?.asleep || '22:30'); const [wake, setWake] = useState(initial?.wake || '05:45');
   const [quality, setQuality] = useState(initial?.quality || 3); const [bathroom, setBathroom] = useState(initial?.bathroom ?? '');
 
   const computeHours = () => {
