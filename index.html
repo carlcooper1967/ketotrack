@@ -666,7 +666,7 @@ function RegularsList({ regulars, remaining, onPick, onEdit, onDelete, onToggleP
   const groups = {};
   visible.forEach(r => { const key = r.restaurant || 'Other'; (groups[key] = groups[key] || []).push(r); });
   const hasRestaurants = visible.some(r => r.restaurant);
-  const groupKeys = hasRestaurants ? Object.keys(groups) : [null];
+  const groupKeys = hasRestaurants ? Object.keys(groups) : ['Other'];
 
   const confirmBatch = () => {
     const items = regulars.filter(r => selected.includes(r.id));
