@@ -176,6 +176,9 @@ function KetoTrack() {
   const [showSleepForm, setShowSleepForm] = useState(false);
   const [editSleep, setEditSleep] = useState(null);
   const [showWorkoutAi, setShowWorkoutAi] = useState(false);
+  const [showTrainingType, setShowTrainingType] = useState(false);
+  const [pendingTrainingType, setPendingTrainingType] = useState(null);
+  const [showTrainingMethod, setShowTrainingMethod] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showHome, setShowHome] = useState(false);
@@ -497,18 +500,8 @@ function KetoTrack() {
             onEdit={(food) => setEditFood({ mealKey: m.key, food })} />
         ))}
 
-        <div style={{ display: 'flex', gap: 8 }}>
-          <div className="card" style={{ flex: 1, padding: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: "'Oswald', sans-serif", fontSize: 10.5, letterSpacing: '0.03em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>♥ BP</span>
-              <button className="pill" style={{ padding: '4px 7px', fontSize: 10 }} onClick={() => setShowBpForm(true)}>+</button>
-            </div>
-            {latestBp ? (
-              <div><span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700 }}>{latestBp.systolic}/{latestBp.diastolic}</span></div>
-            ) : <div style={{ color: MUTED, fontSize: 11 }}>None yet.</div>}
-          </div>
-
-          <div className="card" style={{ flex: 1, padding: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <div className="card" style={{ padding: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 10.5, letterSpacing: '0.03em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>📏 Measure</span>
               <button className="pill" style={{ padding: '4px 7px', fontSize: 10 }} onClick={() => setShowMeasureForm(true)}>+</button>
@@ -518,7 +511,7 @@ function KetoTrack() {
             ) : <div style={{ color: MUTED, fontSize: 11 }}>None yet.</div>}
           </div>
 
-          <div className="card" style={{ flex: 1, padding: 12 }}>
+          <div className="card" style={{ padding: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 10.5, letterSpacing: '0.03em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>Weight</span>
               <button className="pill" style={{ padding: '4px 7px', fontSize: 10 }} onClick={() => setShowWeightForm(true)}>+</button>
@@ -531,29 +524,35 @@ function KetoTrack() {
               </div>
             ) : <div style={{ color: MUTED, fontSize: 11 }}>None yet.</div>}
           </div>
-        </div>
 
-        <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>😴 Sleep</span>
-            <button className="pill" onClick={() => setShowSleepForm(true)}>+ Log</button>
+          <div className="card" style={{ padding: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: "'Oswald', sans-serif", fontSize: 10.5, letterSpacing: '0.03em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>♥ BP</span>
+              <button className="pill" style={{ padding: '4px 7px', fontSize: 10 }} onClick={() => setShowBpForm(true)}>+</button>
+            </div>
+            {latestBp ? (
+              <div><span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700 }}>{latestBp.systolic}/{latestBp.diastolic}</span></div>
+            ) : <div style={{ color: MUTED, fontSize: 11 }}>None yet.</div>}
           </div>
-          {latestSleep ? (
-            <button onClick={() => setEditSleep(latestSleep)} style={{ background: 'none', border: 'none', textAlign: 'left', display: 'flex', alignItems: 'baseline' }}>
-              <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 22, fontWeight: 700 }}>{latestSleep.hours}<span style={{ fontSize: 12, color: MUTED, fontWeight: 500 }}> hrs</span></span>
-              <span style={{ fontSize: 12, color: MUTED, marginLeft: 10 }}>Quality {latestSleep.quality}/5{latestSleep.bathroom ? ` · up ${latestSleep.bathroom}x` : ''}</span>
-              <span style={{ fontSize: 11, color: '#B8B5BD', marginLeft: 6 }}>✎</span>
-            </button>
-          ) : <div style={{ color: MUTED, fontSize: 13 }}>Not logged yet — totally optional.</div>}
+
+          <div className="card" style={{ padding: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 10.5, letterSpacing: '0.03em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>😴 Sleep</span>
+              <button className="pill" style={{ padding: '4px 7px', fontSize: 10 }} onClick={() => setShowSleepForm(true)}>+</button>
+            </div>
+            {latestSleep ? (
+              <button onClick={() => setEditSleep(latestSleep)} style={{ background: 'none', border: 'none', textAlign: 'left' }}>
+                <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700 }}>{latestSleep.hours}<span style={{ fontSize: 11, color: MUTED, fontWeight: 500 }}> hrs</span></span>
+                <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>Q{latestSleep.quality}/5{latestSleep.bathroom ? ` · ${latestSleep.bathroom}x up` : ''} <span style={{ color: '#B8B5BD' }}>✎</span></div>
+              </button>
+            ) : <div style={{ color: MUTED, fontSize: 11 }}>None yet.</div>}
+          </div>
         </div>
 
         <div className="card" style={{ marginBottom: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>Training</span>
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button onClick={() => setShowAddWorkout(true)} style={{ background: MANUAL_GRAY, border: 'none', borderRadius: 8, padding: '7px 12px', color: WHITE, fontSize: 12.5, fontWeight: 700 }}>Manual+</button>
-              <button onClick={() => setShowWorkoutAi(true)} style={{ background: GRAY, border: 'none', borderRadius: 8, padding: '7px 12px', color: WHITE, fontSize: 12.5, fontWeight: 700 }}>Smart+</button>
-            </div>
+            <button className="pill" onClick={() => setShowTrainingType(true)}>+ Log</button>
           </div>
           {dayData.workouts.length === 0 ? <div style={{ color: MUTED, fontSize: 13 }}>No sessions logged.</div> : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -600,13 +599,16 @@ function KetoTrack() {
       )}
       {editRegular && <EditRegularModal item={editRegular} onClose={() => setEditRegular(null)}
         onSave={(updates) => { updateRegular(editRegular.id, updates); setEditRegular(null); }} />}
-      {showAddWorkout && <WorkoutModal profileWeight={profile.currentWeight} onClose={() => setShowAddWorkout(false)} onSave={(w) => { addWorkout(w); setShowAddWorkout(false); }} />}
+      {showTrainingType && <TrainingTypeModal onClose={() => setShowTrainingType(false)} onPick={(type) => { setPendingTrainingType(type); setShowTrainingType(false); setShowTrainingMethod(true); }} />}
+      {showTrainingMethod && <TrainingMethodModal type={pendingTrainingType} onClose={() => { setShowTrainingMethod(false); setPendingTrainingType(null); }}
+        onPick={(method) => { setShowTrainingMethod(false); if (method === 'manual') setShowAddWorkout(true); else setShowWorkoutAi(true); }} />}
+      {showAddWorkout && <WorkoutModal initialType={pendingTrainingType} profileWeight={profile.currentWeight} onClose={() => { setShowAddWorkout(false); setPendingTrainingType(null); }} onSave={(w) => { addWorkout(w); setShowAddWorkout(false); setPendingTrainingType(null); }} />}
       {showWeightForm && <WeightModal onClose={() => setShowWeightForm(false)} onSave={(entry) => { persistWeight([...weightLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowWeightForm(false); }} />}
       {showBpForm && <BpModal onClose={() => setShowBpForm(false)} onSave={(entry) => { persistBp([...bpLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowBpForm(false); }} />}
       {showMeasureForm && <MeasureModal onClose={() => setShowMeasureForm(false)} onSave={(entry) => { persistMeasure([...measureLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowMeasureForm(false); }} />}
       {showSleepForm && <SleepModal onClose={() => setShowSleepForm(false)} onSave={(entry) => { persistSleep([...sleepLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowSleepForm(false); }} />}
       {editSleep && <SleepModal initial={editSleep} onClose={() => setEditSleep(null)} onSave={(entry) => { updateSleep(entry.id, entry); setEditSleep(null); }} />}
-      {showWorkoutAi && <WorkoutAiModal onClose={() => setShowWorkoutAi(false)} onSave={(w) => { addWorkout(w); setShowWorkoutAi(false); }} />}
+      {showWorkoutAi && <WorkoutAiModal initialType={pendingTrainingType} onClose={() => { setShowWorkoutAi(false); setPendingTrainingType(null); }} onSave={(w) => { addWorkout(w); setShowWorkoutAi(false); setPendingTrainingType(null); }} />}
       {showSettings && <SettingsModal profile={profile} onClose={() => setShowSettings(false)} onSave={(p) => { save('kt-profile', p); setProfile(p); setShowSettings(false); }}
         onExport={exportCSV} onShowHome={() => { setShowSettings(false); setShowHome(true); }} onShowHistory={() => { setShowSettings(false); setShowHistory(true); }} />}
       {showHistory && <HistoryModal targets={targets} weightLog={weightLog} onClose={() => setShowHistory(false)} />}
@@ -1018,7 +1020,41 @@ function EditFoodModal({ food, onClose, onSave, onDelete }) {
   );
 }
 
-function WorkoutAiModal({ onClose, onSave }) {
+const TRAINING_TYPES = [
+  { key: 'Strength', emoji: '🏋️' },
+  { key: 'Cardio', emoji: '❤️' },
+  { key: 'Walk', emoji: '🚶' },
+  { key: 'Cycling', emoji: '🚴' },
+  { key: 'Mobility', emoji: '🧘' },
+  { key: 'Mixed', emoji: '🔀' },
+];
+
+function TrainingTypeModal({ onClose, onPick }) {
+  return (
+    <Modal title="What kind of training?" onClose={onClose}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        {TRAINING_TYPES.map(t => (
+          <button key={t.key} onClick={() => onPick(t.key)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 14, border: `1px solid ${BORDER}`, borderRadius: 10, background: WHITE, fontSize: 14, fontWeight: 600, color: TEXT }}>
+            <span>{t.emoji}</span> {t.key}
+          </button>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
+function TrainingMethodModal({ type, onClose, onPick }) {
+  return (
+    <Modal title={`Log ${type} — how?`} onClose={onClose}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <button onClick={() => onPick('manual')} style={{ background: MANUAL_GRAY, border: 'none', borderRadius: 10, padding: 16, color: WHITE, fontSize: 14, fontWeight: 700 }}>Manual Entry</button>
+        <button onClick={() => onPick('smart')} style={{ background: GRAY, border: 'none', borderRadius: 10, padding: 16, color: WHITE, fontSize: 14, fontWeight: 700 }}>✨ Smart Entry (Photo)</button>
+      </div>
+    </Modal>
+  );
+}
+
+function WorkoutAiModal({ initialType, onClose, onSave }) {
   const [photo, setPhoto] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -1045,7 +1081,7 @@ function WorkoutAiModal({ onClose, onSave }) {
         else setError(data.message || 'Could not read that screen. Try again or log manually.');
         setLoading(false); return;
       }
-      setResult({ type: data.type || 'Cardio', duration: data.duration || '', distance: data.distance || '', activeCalories: data.activeCalories || '', avgHeartRate: data.avgHeartRate || '', avgSpeed: data.avgSpeed || '', cadence: data.cadence || '' });
+      setResult({ type: initialType || data.type || 'Cardio', duration: data.duration || '', distance: data.distance || '', activeCalories: data.activeCalories || '', avgHeartRate: data.avgHeartRate || '', avgSpeed: data.avgSpeed || '', cadence: data.cadence || '' });
     } catch (e) {
       setError('Could not reach the AI estimator. Check your connection and try again.');
     }
@@ -1091,8 +1127,8 @@ function WorkoutAiModal({ onClose, onSave }) {
   );
 }
 
-function WorkoutModal({ profileWeight, onClose, onSave }) {
-  const [w, setW] = useState({ type: 'Strength', duration: '', distance: '', weightLifted: '', reps: '', avgSpeed: '', cadence: '', activeCalories: '', avgHeartRate: '', notes: '' });
+function WorkoutModal({ initialType, profileWeight, onClose, onSave }) {
+  const [w, setW] = useState({ type: initialType || 'Strength', duration: '', distance: '', weightLifted: '', reps: '', avgSpeed: '', cadence: '', activeCalories: '', avgHeartRate: '', notes: '' });
   const num = (v) => parseFloat(v) || 0;
   const isCardioLike = w.type === 'Walk' || w.type === 'Cardio';
   const isStrength = w.type === 'Strength';
