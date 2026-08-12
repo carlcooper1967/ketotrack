@@ -179,6 +179,10 @@ function KetoTrack() {
   const [showTrainingType, setShowTrainingType] = useState(false);
   const [pendingTrainingType, setPendingTrainingType] = useState(null);
   const [showTrainingMethod, setShowTrainingMethod] = useState(false);
+  const [showWeightHistory, setShowWeightHistory] = useState(false);
+  const [showBpHistory, setShowBpHistory] = useState(false);
+  const [showMeasureHistory, setShowMeasureHistory] = useState(false);
+  const [showSleepHistory, setShowSleepHistory] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showHome, setShowHome] = useState(false);
@@ -284,7 +288,8 @@ function KetoTrack() {
   const latestWeight = weightLog.length ? weightLog[weightLog.length - 1].weight : null;
   const startWeight = weightLog.length ? weightLog[0].weight : null;
   const latestBp = bpLog.length ? bpLog[bpLog.length - 1] : null;
-  const latestSleep = sleepLog.length ? sleepLog[sleepLog.length - 1] : null;
+  const latestSleep = sleepLog.find(s => s.date === selectedDate) || null;
+  const mostRecentSleep = sleepLog.length ? sleepLog[sleepLog.length - 1] : null;
 
   const weeksToGoal = useMemo(() => {
     if (weightLog.length < 2 || !goalWeight) return null;
@@ -480,7 +485,7 @@ function KetoTrack() {
 
         <div className="card" style={{ padding: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
-            <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 12, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>💧 Water</span>
+            <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 12, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>💧 Hydration</span>
             <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 18, fontWeight: 700, color: statColor(dayData.water, targets.water, 'floor') }}>{dayData.water}<span style={{ fontSize: 11, color: MUTED, fontWeight: 500 }}> / {targets.water} oz</span></span>
           </div>
           <div style={{ display: 'flex', gap: 4 }}>
@@ -509,6 +514,7 @@ function KetoTrack() {
             {totalInchesLost !== null ? (
               <div><span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700, color: totalInchesLost > 0 ? '#16A34A' : TEXT }}>{totalInchesLost > 0 ? '-' : ''}{Math.abs(totalInchesLost).toFixed(1)}"</span></div>
             ) : <div style={{ color: MUTED, fontSize: 11 }}>None yet.</div>}
+            <button onClick={() => setShowMeasureHistory(true)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 10, marginTop: 4, padding: 0 }}>History →</button>
           </div>
 
           <div className="card" style={{ padding: 12 }}>
@@ -523,6 +529,7 @@ function KetoTrack() {
                 {weeksToGoal !== null && <div style={{ color: MUTED, fontSize: 10, marginTop: 2 }}>~{weeksToGoal}wk to goal</div>}
               </div>
             ) : <div style={{ color: MUTED, fontSize: 11 }}>None yet.</div>}
+            <button onClick={() => setShowWeightHistory(true)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 10, marginTop: 4, padding: 0 }}>History →</button>
           </div>
 
           <div className="card" style={{ padding: 12 }}>
@@ -533,6 +540,7 @@ function KetoTrack() {
             {latestBp ? (
               <div><span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700 }}>{latestBp.systolic}/{latestBp.diastolic}</span></div>
             ) : <div style={{ color: MUTED, fontSize: 11 }}>None yet.</div>}
+            <button onClick={() => setShowBpHistory(true)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 10, marginTop: 4, padding: 0 }}>History →</button>
           </div>
 
           <div className="card" style={{ padding: 12 }}>
@@ -545,7 +553,8 @@ function KetoTrack() {
                 <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700 }}>{latestSleep.hours}<span style={{ fontSize: 11, color: MUTED, fontWeight: 500 }}> hrs</span></span>
                 <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>Q{latestSleep.quality}/5{latestSleep.bathroom ? ` · ${latestSleep.bathroom}x up` : ''} <span style={{ color: '#B8B5BD' }}>✎</span></div>
               </button>
-            ) : <div style={{ color: MUTED, fontSize: 11 }}>None yet.</div>}
+            ) : <div style={{ color: MUTED, fontSize: 11 }}>Not logged today.</div>}
+            <button onClick={() => setShowSleepHistory(true)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 10, marginTop: 4, padding: 0 }}>History →</button>
           </div>
         </div>
 
@@ -606,12 +615,16 @@ function KetoTrack() {
       {showWeightForm && <WeightModal onClose={() => setShowWeightForm(false)} onSave={(entry) => { persistWeight([...weightLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowWeightForm(false); }} />}
       {showBpForm && <BpModal onClose={() => setShowBpForm(false)} onSave={(entry) => { persistBp([...bpLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowBpForm(false); }} />}
       {showMeasureForm && <MeasureModal onClose={() => setShowMeasureForm(false)} onSave={(entry) => { persistMeasure([...measureLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowMeasureForm(false); }} />}
-      {showSleepForm && <SleepModal onClose={() => setShowSleepForm(false)} onSave={(entry) => { persistSleep([...sleepLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowSleepForm(false); }} />}
+      {showSleepForm && <SleepModal forDate={selectedDate} onClose={() => setShowSleepForm(false)} onSave={(entry) => { persistSleep([...sleepLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowSleepForm(false); }} />}
       {editSleep && <SleepModal initial={editSleep} onClose={() => setEditSleep(null)} onSave={(entry) => { updateSleep(entry.id, entry); setEditSleep(null); }} />}
       {showWorkoutAi && <WorkoutAiModal initialType={pendingTrainingType} onClose={() => { setShowWorkoutAi(false); setPendingTrainingType(null); }} onSave={(w) => { addWorkout(w); setShowWorkoutAi(false); setPendingTrainingType(null); }} />}
       {showSettings && <SettingsModal profile={profile} onClose={() => setShowSettings(false)} onSave={(p) => { save('kt-profile', p); setProfile(p); setShowSettings(false); }}
         onExport={exportCSV} onShowHome={() => { setShowSettings(false); setShowHome(true); }} onShowHistory={() => { setShowSettings(false); setShowHistory(true); }} />}
       {showHistory && <HistoryModal targets={targets} weightLog={weightLog} onClose={() => setShowHistory(false)} />}
+      {showWeightHistory && <EntryHistoryModal title="Weight History" entries={weightLog} onClose={() => setShowWeightHistory(false)} renderRow={e => `${e.weight} lbs`} />}
+      {showBpHistory && <EntryHistoryModal title="Blood Pressure History" entries={bpLog} onClose={() => setShowBpHistory(false)} renderRow={e => `${e.systolic}/${e.diastolic}`} />}
+      {showMeasureHistory && <EntryHistoryModal title="Measurements History" entries={measureLog} onClose={() => setShowMeasureHistory(false)} renderRow={e => [e.waist && `W:${e.waist}`, e.chest && `C:${e.chest}`, e.hips && `H:${e.hips}`, e.arms && `A:${e.arms}`, e.thighs && `T:${e.thighs}`].filter(Boolean).join(' ')} />}
+      {showSleepHistory && <EntryHistoryModal title="Sleep History" entries={sleepLog} onClose={() => setShowSleepHistory(false)} renderRow={e => `${e.hours} hrs · Q${e.quality}/5`} />}
       {showHome && <Modal title="Add to Home Screen" onClose={() => setShowHome(false)}><HomeScreenSteps /></Modal>}
       {popup && <MacroPopup data={popup} onClose={() => setPopup(null)} />}
     </div>
@@ -652,7 +665,7 @@ function ProfileSetup({ onDone }) {
             <Field label="Protein Goal (g)"><input type="number" value={t.protein} onChange={e => setT({ ...t, protein: num(e.target.value) })} /></Field>
             <Field label="Net carb ceiling (g)"><input type="number" value={t.netCarbs} onChange={e => setT({ ...t, netCarbs: num(e.target.value) })} /></Field>
             <Field label="Fat Goal (g)"><input type="number" value={t.fat} onChange={e => setT({ ...t, fat: num(e.target.value) })} /></Field>
-            <Field label="Water Goal (oz)"><input type="number" value={t.water} onChange={e => setT({ ...t, water: num(e.target.value) })} /></Field>
+            <Field label="Hydration Goal (oz)"><input type="number" value={t.water} onChange={e => setT({ ...t, water: num(e.target.value) })} /></Field>
           </div>
 
           <PrimaryButton onClick={submit} label="Start Tracking" />
@@ -672,8 +685,7 @@ function ProfileSetup({ onDone }) {
 }
 
 // ---------- Frequent Foods ----------
-function RegularsList({ regulars, remaining, onPick, onEdit, onDelete, onTogglePin, onBatchPick }) {
-  const [selectMode, setSelectMode] = useState(false);
+function RegularsList({ regulars, remaining, onEdit, onDelete, onTogglePin, onBatchPick }) {
   const [selected, setSelected] = useState([]);
   const [whatFits, setWhatFits] = useState(false);
 
@@ -694,13 +706,12 @@ function RegularsList({ regulars, remaining, onPick, onEdit, onDelete, onToggleP
   const confirmBatch = () => {
     const items = regulars.filter(r => selected.includes(r.id));
     if (items.length) onBatchPick(items);
-    setSelected([]); setSelectMode(false);
+    setSelected([]);
   };
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <button onClick={() => { setSelectMode(!selectMode); setSelected([]); }} style={{ flex: 1, padding: 8, borderRadius: 8, border: `1.5px solid ${selectMode ? BURGUNDY : BORDER}`, background: selectMode ? '#F6F1F2' : WHITE, color: selectMode ? BURGUNDY : MUTED, fontWeight: 600, fontSize: 12 }}>{selectMode ? 'Cancel select' : 'Select multiple'}</button>
+      <div style={{ display: 'flex', marginBottom: 12 }}>
         <button onClick={() => setWhatFits(!whatFits)} style={{ flex: 1, padding: 8, borderRadius: 8, border: `1.5px solid ${whatFits ? BURGUNDY : BORDER}`, background: whatFits ? '#F6F1F2' : WHITE, color: whatFits ? BURGUNDY : MUTED, fontWeight: 600, fontSize: 12 }}>{whatFits ? 'Showing what fits' : 'What fits?'}</button>
       </div>
 
@@ -713,25 +724,21 @@ function RegularsList({ regulars, remaining, onPick, onEdit, onDelete, onToggleP
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {groups[gk].map(r => (
                 <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 0', borderBottom: `1px solid ${BORDER}` }}>
-                  {selectMode && (
-                    <button onClick={() => toggleSelect(r.id)} style={{ background: 'none', border: 'none', flexShrink: 0 }}>
-                      <div style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${selected.includes(r.id) ? BURGUNDY : '#C9C6D1'}`, background: selected.includes(r.id) ? BURGUNDY : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        {selected.includes(r.id) && <span style={{ color: WHITE, fontSize: 11, fontWeight: 700 }}>✓</span>}
-                      </div>
-                    </button>
-                  )}
-                  <button onClick={() => selectMode ? toggleSelect(r.id) : onPick(r)} style={{ background: 'none', border: 'none', textAlign: 'left', flex: 1, minWidth: 0 }}>
+                  <button onClick={() => toggleSelect(r.id)} style={{ background: 'none', border: 'none', flexShrink: 0 }}>
+                    <div style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${selected.includes(r.id) ? BURGUNDY : '#C9C6D1'}`, background: selected.includes(r.id) ? BURGUNDY : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {selected.includes(r.id) && <span style={{ color: WHITE, fontSize: 11, fontWeight: 700 }}>✓</span>}
+                    </div>
+                  </button>
+                  <button onClick={() => toggleSelect(r.id)} style={{ background: 'none', border: 'none', textAlign: 'left', flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 5 }}>
                       {r.pinned && <span style={{ fontSize: 11 }}>📌</span>}
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
                     </div>
                     <div style={{ fontSize: 12, color: MUTED }}>{Math.round(r.protein)}g P · {Math.max(0, Math.round(r.carbs - r.fiber))}g net C</div>
                   </button>
-                  {!selectMode && <>
-                    <button onClick={() => onTogglePin(r.id)} style={{ background: 'none', border: 'none', color: r.pinned ? BURGUNDY : '#C9C6D1', fontSize: 15 }}>📌</button>
-                    <button onClick={() => onEdit(r)} style={{ background: 'none', border: 'none', color: '#B8B5BD', fontSize: 14 }}>✎</button>
-                    <button onClick={() => onDelete(r.id)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 15 }}>✕</button>
-                  </>}
+                  <button onClick={() => onTogglePin(r.id)} style={{ background: 'none', border: 'none', color: r.pinned ? BURGUNDY : '#C9C6D1', fontSize: 15 }}>📌</button>
+                  <button onClick={() => onEdit(r)} style={{ background: 'none', border: 'none', color: '#B8B5BD', fontSize: 14 }}>✎</button>
+                  <button onClick={() => onDelete(r.id)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 15 }}>✕</button>
                 </div>
               ))}
             </div>
@@ -739,7 +746,7 @@ function RegularsList({ regulars, remaining, onPick, onEdit, onDelete, onToggleP
         ))
       )}
 
-      {selectMode && selected.length > 0 && (
+      {selected.length > 0 && (
         <PrimaryButton onClick={confirmBatch} label={`Add ${selected.length} item${selected.length > 1 ? 's' : ''}`} style={{ marginTop: 14 }} />
       )}
     </div>
@@ -1224,7 +1231,7 @@ function MeasureModal({ onClose, onSave }) {
   );
 }
 
-function SleepModal({ initial, onClose, onSave }) {
+function SleepModal({ initial, forDate, onClose, onSave }) {
   const [asleep, setAsleep] = useState(initial?.asleep || '22:30'); const [wake, setWake] = useState(initial?.wake || '05:45');
   const [quality, setQuality] = useState(initial?.quality || 3); const [bathroom, setBathroom] = useState(initial?.bathroom ?? '');
 
@@ -1240,7 +1247,7 @@ function SleepModal({ initial, onClose, onSave }) {
   const submit = () => {
     const hours = computeHours();
     if (hours === null) return;
-    onSave({ date: initial?.date || todayISO(), id: initial?.id || (Date.now() + Math.random()), asleep, wake, hours, quality, bathroom: parseInt(bathroom) || 0 });
+    onSave({ date: initial?.date || forDate || todayISO(), id: initial?.id || (Date.now() + Math.random()), asleep, wake, hours, quality, bathroom: parseInt(bathroom) || 0 });
   };
 
   return (
@@ -1274,7 +1281,7 @@ function SettingsModal({ profile, onClose, onSave, onExport, onShowHome, onShowH
       <Field label="Fat Goal (g)"><input type="number" value={t.fat} onChange={e => setT({ ...t, fat: num(e.target.value) })} /></Field>
       <Field label="Net carb ceiling (g)"><input type="number" value={t.netCarbs} onChange={e => setT({ ...t, netCarbs: num(e.target.value) })} /></Field>
       <Field label="Calorie ceiling"><input type="number" value={t.calories} onChange={e => setT({ ...t, calories: num(e.target.value) })} /></Field>
-      <Field label="Water Goal (oz)"><input type="number" value={t.water} onChange={e => setT({ ...t, water: num(e.target.value) })} /></Field>
+      <Field label="Hydration Goal (oz)"><input type="number" value={t.water} onChange={e => setT({ ...t, water: num(e.target.value) })} /></Field>
       <Field label="Goal weight (lbs)"><input type="number" value={goalWeight} onChange={e => setGoalWeight(num(e.target.value))} /></Field>
       <PrimaryButton onClick={() => onSave({ ...profile, targets: t, goalWeight })} label="Save Targets" />
 
@@ -1345,6 +1352,26 @@ const METRICS = [
   { key: 'fat', label: 'Fat', kind: 'floor' },
   { key: 'weight', label: 'Weight', kind: null },
 ];
+
+function EntryHistoryModal({ title, entries, renderRow, onClose }) {
+  const sorted = [...entries].sort((a, b) => b.date.localeCompare(a.date));
+  return (
+    <Modal title={title} onClose={onClose}>
+      {sorted.length === 0 ? (
+        <div style={{ color: MUTED, fontSize: 13 }}>Nothing logged yet.</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {sorted.map((e, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: `1px solid ${BORDER}` }}>
+              <span style={{ fontSize: 12.5, color: MUTED }}>{e.date}</span>
+              <span style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>{renderRow(e)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
+  );
+}
 
 function HistoryModal({ targets, weightLog, onClose }) {
   const [metric, setMetric] = useState('calories');
