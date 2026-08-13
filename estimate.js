@@ -5,17 +5,23 @@
 // Requires an environment variable GEMINI_API_KEY to be set in the
 // Cloudflare Pages project (Settings -> Environment variables).
 
+const HYDRATION_RULE = `For each food item, also determine if it is a hydrating drink. Hydrating drinks include: water, unsweetened tea, coffee, sparkling water, and diet soda. NOT hydrating: alcohol, and drinks that are really food (milkshakes, protein shakes — these are already counted as food macros). If a food item is a hydrating drink, include a "hydrationOz" field with your best estimate of its volume in fluid ounces. Omit "hydrationOz" entirely for non-drink or non-hydrating items.`;
+
 const PROMPT_TEXT = `You are a nutrition estimator. The user will describe one or more foods they ate, possibly including brand names and restaurant items. Identify each distinct food item and estimate its nutrition.
 
+${HYDRATION_RULE}
+
 Respond with ONLY valid JSON (no markdown, no commentary), in this exact shape:
-{"foods":[{"name":"string","protein":number,"carbs":number,"fiber":number,"fat":number,"calories":number}]}
+{"foods":[{"name":"string","protein":number,"carbs":number,"fiber":number,"fat":number,"calories":number,"hydrationOz":number}]}
 
 All numeric values are grams (protein, carbs, fiber, fat) or kcal (calories), for the full portion described. If the user gives a quantity or size, use it. If unsure of an exact branded product, give your best reasonable estimate rather than refusing.`;
 
 const PROMPT_PHOTO = `You are a nutrition estimator. Look at this photo of a meal or food item and identify each distinct food you can see, estimating a realistic portion size for each.
 
+${HYDRATION_RULE}
+
 Respond with ONLY valid JSON (no markdown, no commentary), in this exact shape:
-{"foods":[{"name":"string","protein":number,"carbs":number,"fiber":number,"fat":number,"calories":number}]}
+{"foods":[{"name":"string","protein":number,"carbs":number,"fiber":number,"fat":number,"calories":number,"hydrationOz":number}]}
 
 All numeric values are grams (protein, carbs, fiber, fat) or kcal (calories), for the estimated portion shown. Give your best reasonable estimate rather than refusing.`;
 
