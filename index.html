@@ -20,7 +20,7 @@
   .ghostbtn { background: #F6F1F2; border: 1px solid #E9E7ED; border-radius: 8px; padding: 7px 10px; color: #7A1F2B; display: flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; }
   .banner { background: #FDF2E9; border: 1px solid #F2D9BC; border-radius: 12px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
   .card { transition: background 2.2s ease, border-color 2.2s ease; }
-  .gold-card { background: linear-gradient(180deg, #FFF7E0, #FFECB3) !important; border-color: #E8C55A !important; }
+  .gold-card { background: linear-gradient(135deg, #FFFBF0, #F4D976) !important; border-color: #C9A227 !important; box-shadow: 0 0 0 1px rgba(201,162,39,0.35), 0 3px 10px rgba(201,162,39,0.28) !important; }
   .confetti-piece { position: fixed; top: -20px; width: 8px; height: 14px; opacity: 0.9; z-index: 999; animation: confetti-fall linear forwards; }
   @keyframes confetti-fall {
     0% { transform: translateY(0) rotate(0deg); opacity: 1; }
@@ -91,7 +91,16 @@ const effective = (f) => {
 function HydrationCard({ water, target, onAdd, gold }) {
   const [val, setVal] = useState('');
   const color = statColor(water, target, 'floor');
-  const submit = () => { const n = parseFloat(val); if (n > 0) { onAdd(n); setVal(''); } };
+  const submit = () => {
+    const n = parseFloat(val);
+    if (!n || n === 0) return;
+    if (n > 33) {
+      const ok = window.confirm(`Add ${n}oz to Hydration? That's a lot for one entry — confirm this is right.`);
+      if (!ok) return;
+    }
+    onAdd(n);
+    setVal('');
+  };
   const chips = [8, 12, 16, 20];
   return (
     <div className={gold ? 'card gold-card' : 'card'} style={{ padding: 14 }}>
@@ -326,12 +335,53 @@ function KetoTrack() {
 
   const logRegularsToMeal = (regulars, mealKey) => {
     const list = Array.isArray(regulars) ? regulars : [regulars];
-    addFoodBatch(mealKey, list.map(r => ({ name: r.name, protein: r.protein, carbs: r.carbs, fiber: r.fiber, fat: r.fat, calories: r.calories })), false);
+    addFoodBatch(mealKey, list.map(r => {
+      const q = r.qty && r.qty > 0 ? r.qty : 1;
+      return { name: q !== 1 ? `${q}x ${r.name}` : r.name, protein: r.protein * q, carbs: r.carbs * q, fiber: r.fiber * q, fat: r.fat * q, calories: r.calories * q };
+    }), false);
     setPickMealFor(null);
   };
   const togglePinRegular = (id) => persistCommon(commonFoods.map(cf => cf.id === id ? { ...cf, pinned: !cf.pinned } : cf));
   const deleteRegular = (id) => persistCommon(commonFoods.filter(cf => cf.id !== id));
   const updateRegular = (id, updates) => persistCommon(commonFoods.map(cf => cf.id === id ? { ...cf, ...updates } : cf));
+
+  // one-time cleanup: strip leading quantities from names, merge items that match after normalization,
+  // averaging their per-unit macros and combining frequency counts
+  const cleanupFrequentFoods = () => {
+    const normalize = (name) => {
+      const m = name.trim().match(/^(\d+(?:\.\d+)?)\s+(.*)$/);
+      const qty = m ? parseFloat(m[1]) : 1;
+      const rest = m ? m[2] : name.trim();
+      let key = rest.toLowerCase().trim();
+      if (key.endsWith('s') && key.length > 3) key = key.slice(0, -1);
+      return { qty: qty || 1, rest, key };
+    };
+    const groups = {};
+    commonFoods.forEach(cf => {
+      const { qty, rest, key } = normalize(cf.name);
+      const groupKey = (cf.restaurant || '') + '|' + key;
+      (groups[groupKey] = groups[groupKey] || []).push({ ...cf, _qty: qty, _rest: rest });
+    });
+    const merged = [];
+    let mergedCount = 0;
+    Object.values(groups).forEach(items => {
+      if (items.length === 1) { merged.push(commonFoods.find(cf => cf.id === items[0].id)); return; }
+      mergedCount += items.length - 1;
+      const perUnit = items.map(it => ({ protein: it.protein / it._qty, carbs: it.carbs / it._qty, fiber: it.fiber / it._qty, fat: it.fat / it._qty, calories: it.calories / it._qty }));
+      const avg = perUnit.reduce((acc, p) => ({ protein: acc.protein + p.protein, carbs: acc.carbs + p.carbs, fiber: acc.fiber + p.fiber, fat: acc.fat + p.fat, calories: acc.calories + p.calories }), { protein: 0, carbs: 0, fiber: 0, fat: 0, calories: 0 });
+      const n = perUnit.length;
+      const totalCount = items.reduce((s, it) => s + (it.count || 1), 0);
+      const anyPinned = items.some(it => it.pinned);
+      const canonical = items.reduce((a, b) => (b.count || 1) > (a.count || 1) ? b : a);
+      merged.push({
+        id: canonical.id, name: canonical._rest, restaurant: canonical.restaurant || null,
+        protein: avg.protein / n, carbs: avg.carbs / n, fiber: avg.fiber / n, fat: avg.fat / n, calories: avg.calories / n,
+        count: totalCount, pinned: anyPinned,
+      });
+    });
+    persistCommon(merged);
+    return mergedCount;
+  };
 
   const addWorkout = (w) => persistDay({ ...dayData, workouts: [...dayData.workouts, { ...w, id: Date.now() }] });
   const removeWorkout = (id) => persistDay({ ...dayData, workouts: dayData.workouts.filter(w => w.id !== id) });
@@ -366,7 +416,7 @@ function KetoTrack() {
 
   const computeCategoryStreak = (getDayTotal, target, kind) => {
     let count = 0;
-    for (let i = 0; i < 90; i++) {
+    for (let i = 1; i <= 90; i++) { // start at 1 (yesterday) — today's in-progress totals don't count toward the streak yet
       const d = iso(addDays(new Date(), -i));
       const parsed = load(DAY_KEY(d), null);
       if (!parsed) break;
@@ -588,55 +638,63 @@ function KetoTrack() {
         ))}
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          <div className="card" style={{ padding: 12 }}>
+          <div className="card" style={{ padding: 12, display: 'flex', flexDirection: 'column', minHeight: 122 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 10.5, letterSpacing: '0.03em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>📏 Measure</span>
               <button className="pill" style={{ padding: '4px 7px', fontSize: 10 }} onClick={() => setShowMeasureForm(true)}>+</button>
             </div>
-            {totalInchesLost !== null ? (
-              <div><span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700, color: totalInchesLost > 0 ? '#16A34A' : TEXT }}>{totalInchesLost > 0 ? '-' : ''}{Math.abs(totalInchesLost).toFixed(1)}"</span></div>
-            ) : <div style={{ color: MUTED, fontSize: 11 }}>None yet.</div>}
-            <button onClick={() => setShowMeasureHistory(true)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 10, marginTop: 4, padding: 0 }}>History →</button>
+            <div style={{ flex: 1 }}>
+              {totalInchesLost !== null ? (
+                <div><span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700, color: totalInchesLost > 0 ? '#16A34A' : TEXT }}>{totalInchesLost > 0 ? '-' : ''}{Math.abs(totalInchesLost).toFixed(1)}"</span></div>
+              ) : <div style={{ color: MUTED, fontSize: 11 }}>None yet.</div>}
+            </div>
+            <button onClick={() => setShowMeasureHistory(true)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 10, marginTop: 4, padding: 0, textAlign: 'left' }}>History →</button>
           </div>
 
-          <div className="card" style={{ padding: 12 }}>
+          <div className="card" style={{ padding: 12, display: 'flex', flexDirection: 'column', minHeight: 122 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 10.5, letterSpacing: '0.03em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>Weight</span>
               <button className="pill" style={{ padding: '4px 7px', fontSize: 10 }} onClick={() => setShowWeightForm(true)}>+</button>
             </div>
-            {latestWeight ? (
-              <div>
-                <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700 }}>{latestWeight}</span>
-                {startWeight && startWeight !== latestWeight && <div style={{ color: '#16A34A', fontSize: 10.5, marginTop: 2 }}>📉 {(startWeight - latestWeight).toFixed(1)}</div>}
-                {weeksToGoal !== null && <div style={{ color: MUTED, fontSize: 10, marginTop: 2 }}>~{weeksToGoal}wk to goal</div>}
-              </div>
-            ) : <div style={{ color: MUTED, fontSize: 11 }}>None yet.</div>}
-            <button onClick={() => setShowWeightHistory(true)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 10, marginTop: 4, padding: 0 }}>History →</button>
+            <div style={{ flex: 1 }}>
+              {latestWeight ? (
+                <div>
+                  <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700 }}>{latestWeight}</span>
+                  {startWeight && startWeight !== latestWeight && <div style={{ color: '#16A34A', fontSize: 10.5, marginTop: 2 }}>📉 {(startWeight - latestWeight).toFixed(1)}</div>}
+                  {weeksToGoal !== null && <div style={{ color: MUTED, fontSize: 10, marginTop: 2 }}>~{weeksToGoal}wk to goal</div>}
+                </div>
+              ) : <div style={{ color: MUTED, fontSize: 11 }}>None yet.</div>}
+            </div>
+            <button onClick={() => setShowWeightHistory(true)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 10, marginTop: 4, padding: 0, textAlign: 'left' }}>History →</button>
           </div>
 
-          <div className="card" style={{ padding: 12 }}>
+          <div className="card" style={{ padding: 12, display: 'flex', flexDirection: 'column', minHeight: 122 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: "'Oswald', sans-serif", fontSize: 10.5, letterSpacing: '0.03em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>♥ BP</span>
               <button className="pill" style={{ padding: '4px 7px', fontSize: 10 }} onClick={() => setShowBpForm(true)}>+</button>
             </div>
-            {latestBp ? (
-              <div><span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700 }}>{latestBp.systolic}/{latestBp.diastolic}</span></div>
-            ) : <div style={{ color: MUTED, fontSize: 11 }}>None yet.</div>}
-            <button onClick={() => setShowBpHistory(true)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 10, marginTop: 4, padding: 0 }}>History →</button>
+            <div style={{ flex: 1 }}>
+              {latestBp ? (
+                <div><span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700 }}>{latestBp.systolic}/{latestBp.diastolic}</span></div>
+              ) : <div style={{ color: MUTED, fontSize: 11 }}>None yet.</div>}
+            </div>
+            <button onClick={() => setShowBpHistory(true)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 10, marginTop: 4, padding: 0, textAlign: 'left' }}>History →</button>
           </div>
 
-          <div className="card" style={{ padding: 12 }}>
+          <div className="card" style={{ padding: 12, display: 'flex', flexDirection: 'column', minHeight: 122 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 10.5, letterSpacing: '0.03em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>😴 Sleep</span>
               <button className="pill" style={{ padding: '4px 7px', fontSize: 10 }} onClick={() => setShowSleepForm(true)}>+</button>
             </div>
-            {latestSleep ? (
-              <button onClick={() => setEditSleep(latestSleep)} style={{ background: 'none', border: 'none', textAlign: 'left' }}>
-                <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700 }}>{latestSleep.hours}<span style={{ fontSize: 11, color: MUTED, fontWeight: 500 }}> hrs</span></span>
-                <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>Q{latestSleep.quality}/5{latestSleep.bathroom ? ` · ${latestSleep.bathroom}x up` : ''} <span style={{ color: '#B8B5BD' }}>✎</span></div>
-              </button>
-            ) : <div style={{ color: MUTED, fontSize: 11 }}>Not logged today.</div>}
-            <button onClick={() => setShowSleepHistory(true)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 10, marginTop: 4, padding: 0 }}>History →</button>
+            <div style={{ flex: 1 }}>
+              {latestSleep ? (
+                <button onClick={() => setEditSleep(latestSleep)} style={{ background: 'none', border: 'none', textAlign: 'left' }}>
+                  <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700 }}>{latestSleep.hours}<span style={{ fontSize: 11, color: MUTED, fontWeight: 500 }}> hrs</span></span>
+                  <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>Q{latestSleep.quality}/5{latestSleep.bathroom ? ` · ${latestSleep.bathroom}x up` : ''} <span style={{ color: '#B8B5BD' }}>✎</span></div>
+                </button>
+              ) : <div style={{ color: MUTED, fontSize: 11 }}>Not logged today.</div>}
+            </div>
+            <button onClick={() => setShowSleepHistory(true)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 10, marginTop: 4, padding: 0, textAlign: 'left' }}>History →</button>
           </div>
         </div>
 
@@ -685,7 +743,7 @@ function KetoTrack() {
         <Modal title="⭐ Frequent Foods" onClose={() => setShowRegulars(false)}>
           <RegularsList regulars={regularsSorted} remaining={{ netCarbs: Math.max(0, targets.netCarbs - totals.netCarbs), calories: Math.max(0, targets.calories - netCalories) }}
             onPick={(r) => { setShowRegulars(false); setPickMealFor(r); }} onEdit={(r) => { setShowRegulars(false); setEditRegular(r); }} onDelete={deleteRegular} onTogglePin={togglePinRegular}
-            onBatchPick={(items) => { setShowRegulars(false); setPickMealFor(items); }} />
+            onBatchPick={(items) => { setShowRegulars(false); setPickMealFor(items); }} onCleanup={cleanupFrequentFoods} />
         </Modal>
       )}
       {editRegular && <EditRegularModal item={editRegular} onClose={() => setEditRegular(null)}
@@ -768,11 +826,17 @@ function ProfileSetup({ onDone }) {
 }
 
 // ---------- Frequent Foods ----------
-function RegularsList({ regulars, remaining, onEdit, onDelete, onTogglePin, onBatchPick }) {
+function RegularsList({ regulars, remaining, onEdit, onDelete, onTogglePin, onBatchPick, onCleanup }) {
   const [selected, setSelected] = useState([]);
+  const [qtys, setQtys] = useState({});
   const [whatFits, setWhatFits] = useState(false);
+  const [cleanupMsg, setCleanupMsg] = useState(null);
 
-  const toggleSelect = (id) => setSelected(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id]);
+  const toggleSelect = (id) => {
+    if (selected.includes(id)) { setSelected(selected.filter(x => x !== id)); }
+    else { setSelected([...selected, id]); setQtys(q => ({ ...q, [id]: q[id] || 1 })); }
+  };
+  const setQty = (id, q) => setQtys(prev => ({ ...prev, [id]: Math.max(1, q) }));
 
   const fits = (r) => {
     if (!whatFits) return true;
@@ -787,16 +851,24 @@ function RegularsList({ regulars, remaining, onEdit, onDelete, onTogglePin, onBa
   const groupKeys = hasRestaurants ? Object.keys(groups) : ['Other'];
 
   const confirmBatch = () => {
-    const items = regulars.filter(r => selected.includes(r.id));
+    const items = regulars.filter(r => selected.includes(r.id)).map(r => ({ ...r, qty: qtys[r.id] || 1 }));
     if (items.length) onBatchPick(items);
-    setSelected([]);
+    setSelected([]); setQtys({});
+  };
+
+  const runCleanup = () => {
+    const n = onCleanup();
+    setCleanupMsg(n > 0 ? `Merged ${n} duplicate${n > 1 ? 's' : ''}.` : 'No duplicates found.');
+    setTimeout(() => setCleanupMsg(null), 3000);
   };
 
   return (
     <div>
-      <div style={{ display: 'flex', marginBottom: 12 }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
         <button onClick={() => setWhatFits(!whatFits)} style={{ flex: 1, padding: 8, borderRadius: 8, border: `1.5px solid ${whatFits ? BURGUNDY : BORDER}`, background: whatFits ? '#F6F1F2' : WHITE, color: whatFits ? BURGUNDY : MUTED, fontWeight: 600, fontSize: 12 }}>{whatFits ? 'Showing what fits' : 'What fits?'}</button>
+        <button onClick={runCleanup} style={{ padding: '8px 12px', borderRadius: 8, border: `1.5px solid ${BORDER}`, background: WHITE, color: MUTED, fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap' }}>Clean Up</button>
       </div>
+      {cleanupMsg && <div style={{ fontSize: 12, color: '#2E7D32', marginBottom: 10 }}>{cleanupMsg}</div>}
 
       {visible.length === 0 ? (
         <div style={{ color: MUTED, fontSize: 13 }}>{regulars.length === 0 ? "Log a few foods and they'll show up here for quick re-adding." : "Nothing fits your remaining macros right now."}</div>
@@ -819,6 +891,13 @@ function RegularsList({ regulars, remaining, onEdit, onDelete, onTogglePin, onBa
                     </div>
                     <div style={{ fontSize: 12, color: MUTED }}>{Math.round(r.protein)}g P · {Math.max(0, Math.round(r.carbs - r.fiber))}g net C</div>
                   </button>
+                  {selected.includes(r.id) && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                      <button onClick={() => setQty(r.id, (qtys[r.id] || 1) - 1)} style={{ width: 22, height: 22, borderRadius: 5, border: `1px solid ${BORDER}`, background: WHITE, color: BURGUNDY, fontSize: 13, fontWeight: 700 }}>−</button>
+                      <span style={{ fontSize: 12.5, fontWeight: 600, minWidth: 14, textAlign: 'center' }}>{qtys[r.id] || 1}</span>
+                      <button onClick={() => setQty(r.id, (qtys[r.id] || 1) + 1)} style={{ width: 22, height: 22, borderRadius: 5, border: `1px solid ${BORDER}`, background: WHITE, color: BURGUNDY, fontSize: 13, fontWeight: 700 }}>+</button>
+                    </div>
+                  )}
                   <button onClick={() => onTogglePin(r.id)} style={{ background: 'none', border: 'none', color: r.pinned ? BURGUNDY : '#C9C6D1', fontSize: 15 }}>📌</button>
                   <button onClick={() => onEdit(r)} style={{ background: 'none', border: 'none', color: '#B8B5BD', fontSize: 14 }}>✎</button>
                   <button onClick={() => onDelete(r.id)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 15 }}>✕</button>
