@@ -68,10 +68,85 @@ const load = (key, fallback) => {
   catch (e) { return fallback; }
 };
 const save = (key, value) => {
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { console.error('save failed', e); }
+  try { localStorage.setItem(key, JSON.stringify(value)); queueSyncOp(key, JSON.stringify(value), false); } catch (e) { console.error('save failed', e); }
 };
 const DAY_KEY = (d) => `kt-day-${d}`;
 const EMPTY_DAY = { meals: { breakfast: [], lunch: [], dinner: [], snacks: [] }, workouts: [], water: 0 };
+
+// ---------- Cloud sync (device ID + key/value mirror of localStorage) ----------
+const DEVICE_ID_KEY = 'kt-device-id';
+const getDeviceId = () => {
+  let id;
+  try { id = localStorage.getItem(DEVICE_ID_KEY); } catch (e) { id = null; }
+  if (!id) {
+    id = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : ('dev-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+    try { localStorage.setItem(DEVICE_ID_KEY, id); } catch (e) {}
+  }
+  return id;
+};
+
+const SYNC_QUEUE_KEY = 'kt-sync-queue';
+let syncPushTimer = null;
+
+const queueSyncOp = (key, value, deleted) => {
+  if (key === SYNC_QUEUE_KEY || key === DEVICE_ID_KEY) return; // never sync sync-machinery itself
+  try {
+    const queue = JSON.parse(localStorage.getItem(SYNC_QUEUE_KEY) || '{}');
+    queue[key] = { key, value: deleted ? null : value, deleted: !!deleted, updatedAt: Date.now() };
+    localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(queue));
+  } catch (e) {}
+  if (syncPushTimer) clearTimeout(syncPushTimer);
+  syncPushTimer = setTimeout(flushSyncQueue, 1500);
+};
+
+const flushSyncQueue = async () => {
+  let queue;
+  try { queue = JSON.parse(localStorage.getItem(SYNC_QUEUE_KEY) || '{}'); } catch (e) { queue = {}; }
+  const ops = Object.values(queue);
+  if (ops.length === 0) return;
+  try {
+    const deviceId = getDeviceId();
+    const res = await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deviceId, ops }) });
+    if (res.ok) localStorage.setItem(SYNC_QUEUE_KEY, '{}');
+  } catch (e) { /* offline — queue stays for next flush attempt */ }
+};
+
+const pullFromCloud = async () => {
+  try {
+    const deviceId = getDeviceId();
+    const res = await fetch('/api/sync?deviceId=' + encodeURIComponent(deviceId));
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) { return null; }
+};
+
+// One-time reconciliation on app start: if the cloud already has data for this device, it's the
+// source of truth (pulled down into localStorage). If the cloud is empty, this is the first sync —
+// push every existing local kt- key up as the initial migration.
+const reconcileWithCloud = async () => {
+  const cloud = await pullFromCloud();
+  if (cloud === null) return 'offline'; // couldn't reach the backend — work from local storage as-is
+  const cloudKeys = Object.keys(cloud.data || {});
+  if (cloudKeys.length > 0) {
+    cloudKeys.forEach(k => { try { localStorage.setItem(k, cloud.data[k]); } catch (e) {} });
+    return 'pulled';
+  }
+  // cloud empty — migrate every existing local key up
+  const ops = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith('kt-') && k !== DEVICE_ID_KEY && k !== SYNC_QUEUE_KEY) {
+      ops.push({ key: k, value: localStorage.getItem(k), deleted: false, updatedAt: Date.now() });
+    }
+  }
+  if (ops.length > 0) {
+    try {
+      const deviceId = getDeviceId();
+      await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deviceId, ops }) });
+    } catch (e) {}
+  }
+  return 'migrated';
+};
 
 const iso = (d) => {
   const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0');
@@ -222,6 +297,7 @@ function HomeScreenSteps() {
 function CarbTrack() {
   const [profile, setProfile] = useState(null);
   const [loaded, setLoaded] = useState(false);
+  const [pinStatus, setPinStatus] = useState('checking'); // 'checking' | 'need-setup' | 'need-verify' | 'unlocked'
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [weekAnchor, setWeekAnchor] = useState(todayISO());
   const [dayData, setDayData] = useState(EMPTY_DAY);
@@ -260,14 +336,32 @@ function CarbTrack() {
   const [expandedMeals, setExpandedMeals] = useState({});
 
   useEffect(() => {
-    setProfile(load('kt-profile', null));
-    setWeightLog(load('kt-weight-log', []));
-    setBpLog(load('kt-bp-log', []));
-    setMeasureLog(load('kt-measure-log', []));
-    setSleepLog(load('kt-sleep-log', []));
-    setCommonFoods(load('kt-common-foods', []));
-    setDismissed(load('kt-dismissed', {}));
-    setLoaded(true);
+    (async () => {
+      await reconcileWithCloud(); // pull cloud data (or migrate local -> cloud on first run)
+      setProfile(load('kt-profile', null));
+      setWeightLog(load('kt-weight-log', []));
+      setBpLog(load('kt-bp-log', []));
+      setMeasureLog(load('kt-measure-log', []));
+      setSleepLog(load('kt-sleep-log', []));
+      setCommonFoods(load('kt-common-foods', []));
+      setDismissed(load('kt-dismissed', {}));
+      setLoaded(true);
+
+      // PIN gate check — only meaningful once a profile exists (no point gating an empty first-run)
+      const hasProfile = !!load('kt-profile', null);
+      if (!hasProfile) { setPinStatus('unlocked'); return; }
+      try {
+        const deviceId = getDeviceId();
+        const res = await fetch('/api/auth?action=check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deviceId }) });
+        if (!res.ok) { setPinStatus('unlocked'); return; } // backend unreachable — don't lock the person out
+        const data = await res.json();
+        if (!data.hasPin) setPinStatus('need-setup');
+        else if (!data.verifiedThisMonth) setPinStatus('need-verify');
+        else setPinStatus('unlocked');
+      } catch (e) {
+        setPinStatus('unlocked'); // offline — don't lock the person out of their own local data
+      }
+    })();
   }, []);
 
   useEffect(() => { setDayData(load(DAY_KEY(selectedDate), EMPTY_DAY)); }, [selectedDate]);
@@ -541,7 +635,12 @@ function CarbTrack() {
     save('kt-profile', p);
     setProfile(p);
     if (p.currentWeight) persistWeight([{ date: todayISO(), weight: p.currentWeight, note: '' }]);
+    setPinStatus('need-setup'); // brand new profile — set up cloud protection right after
   }} />;
+
+  if (pinStatus === 'need-setup') return <PinSetupScreen onDone={() => setPinStatus('unlocked')} />;
+  if (pinStatus === 'need-verify') return <PinVerifyScreen onUnlocked={() => setPinStatus('unlocked')} />;
+  if (pinStatus === 'checking') return <div style={{ background: GRAY, minHeight: '100vh' }} />;
 
   const regularsSorted = [...commonFoods].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || (b.count || 1) - (a.count || 1));
 
@@ -882,6 +981,133 @@ function ProfileSetup({ onDone }) {
         <div style={{ marginTop: 16, padding: '14px 16px', background: WHITE, borderRadius: 12 }}>
           <div style={{ fontFamily: "'Oswald', sans-serif", fontWeight: 700, fontSize: 13, color: BURGUNDY, marginBottom: 10 }}>📱 Add CarbTrack to Your Home Screen</div>
           <HomeScreenSteps />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------- PIN protection ----------
+function PinSetupScreen({ onDone }) {
+  const [pin, setPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [birthYear, setBirthYear] = useState('');
+  const [error, setError] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    setError(null);
+    if (!/^\d{4,6}$/.test(pin)) { setError('PIN should be 4-6 digits.'); return; }
+    if (pin !== confirmPin) { setError("PINs don't match."); return; }
+    const yearNum = parseInt(birthYear);
+    if (!yearNum || yearNum < 1900 || yearNum > new Date().getFullYear()) { setError('Enter a valid birth year.'); return; }
+    setSaving(true);
+    try {
+      const deviceId = getDeviceId();
+      const res = await fetch('/api/auth?action=setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deviceId, pin, birthYear: yearNum }) });
+      if (!res.ok) throw new Error('failed');
+      onDone();
+    } catch (e) {
+      setError("Couldn't reach the server to save your PIN. Check your connection and try again, or skip for now.");
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div style={{ background: GRAY, minHeight: '100vh', fontFamily: "'Inter', sans-serif", color: TEXT, padding: '30px 20px', display: 'flex', alignItems: 'center' }}>
+      <div style={{ maxWidth: 400, margin: '0 auto', width: '100%' }}>
+        <h1 style={{ fontFamily: "'Oswald', sans-serif", fontSize: 22, fontWeight: 700, color: WHITE, marginBottom: 8 }}>Protect Your Data</h1>
+        <p style={{ color: '#C9C6CA', fontSize: 13, marginBottom: 20, lineHeight: 1.5 }}>
+          Your data now lives in the cloud, not just this device. Set a PIN so it can't be accessed from another phone without it. You'll only need to re-enter it about once a month, not every time you open the app.
+        </p>
+        <div style={{ background: WHITE, borderRadius: 14, padding: 20 }}>
+          <Field label="Choose a PIN (4-6 digits)"><input type="tel" inputMode="numeric" value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, ''))} maxLength={6} /></Field>
+          <Field label="Confirm PIN"><input type="tel" inputMode="numeric" value={confirmPin} onChange={e => setConfirmPin(e.target.value.replace(/\D/g, ''))} maxLength={6} /></Field>
+          <Field label="Birth year (used only if you forget your PIN)"><input type="number" inputMode="numeric" value={birthYear} onChange={e => setBirthYear(e.target.value)} placeholder="e.g. 1967" /></Field>
+          {error && <div style={{ color: RED, fontSize: 12.5, marginBottom: 10 }}>{error}</div>}
+          <PrimaryButton onClick={submit} label={saving ? 'Saving…' : 'Set PIN'} disabled={saving} />
+          <button onClick={onDone} style={{ width: '100%', background: 'none', border: 'none', color: MUTED, fontSize: 12.5, marginTop: 10, padding: 8 }}>Skip for now</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PinVerifyScreen({ onUnlocked }) {
+  const [pin, setPin] = useState('');
+  const [error, setError] = useState(null);
+  const [checking, setChecking] = useState(false);
+  const [showRecover, setShowRecover] = useState(false);
+
+  const submit = async () => {
+    setError(null);
+    setChecking(true);
+    try {
+      const deviceId = getDeviceId();
+      const res = await fetch('/api/auth?action=verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deviceId, pin }) });
+      const data = await res.json();
+      if (data.valid) onUnlocked();
+      else setError('Incorrect PIN. Try again.');
+    } catch (e) {
+      setError("Couldn't reach the server. Check your connection and try again.");
+    }
+    setChecking(false);
+  };
+
+  if (showRecover) return <PinRecoverScreen onDone={onUnlocked} onBack={() => setShowRecover(false)} />;
+
+  return (
+    <div style={{ background: GRAY, minHeight: '100vh', fontFamily: "'Inter', sans-serif", color: TEXT, padding: '30px 20px', display: 'flex', alignItems: 'center' }}>
+      <div style={{ maxWidth: 400, margin: '0 auto', width: '100%' }}>
+        <h1 style={{ fontFamily: "'Oswald', sans-serif", fontSize: 22, fontWeight: 700, color: WHITE, marginBottom: 8 }}>Enter Your PIN</h1>
+        <p style={{ color: '#C9C6CA', fontSize: 13, marginBottom: 20 }}>Monthly check-in to keep your cloud data protected.</p>
+        <div style={{ background: WHITE, borderRadius: 14, padding: 20 }}>
+          <Field label="PIN"><input type="tel" inputMode="numeric" value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, ''))} maxLength={6} autoFocus /></Field>
+          {error && <div style={{ color: RED, fontSize: 12.5, marginBottom: 10 }}>{error}</div>}
+          <PrimaryButton onClick={submit} label={checking ? 'Checking…' : 'Unlock'} disabled={checking} />
+          <button onClick={() => setShowRecover(true)} style={{ width: '100%', background: 'none', border: 'none', color: BURGUNDY, fontSize: 12.5, marginTop: 10, padding: 8, fontWeight: 600 }}>Forgot your PIN?</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PinRecoverScreen({ onDone, onBack }) {
+  const [birthYear, setBirthYear] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [error, setError] = useState(null);
+  const [checking, setChecking] = useState(false);
+
+  const submit = async () => {
+    setError(null);
+    if (!/^\d{4,6}$/.test(newPin)) { setError('New PIN should be 4-6 digits.'); return; }
+    if (newPin !== confirmPin) { setError("PINs don't match."); return; }
+    setChecking(true);
+    try {
+      const deviceId = getDeviceId();
+      const res = await fetch('/api/auth?action=recover', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deviceId, birthYear: parseInt(birthYear), newPin }) });
+      const data = await res.json();
+      if (data.valid) onDone();
+      else setError('That birth year doesn\'t match what we have on file.');
+    } catch (e) {
+      setError("Couldn't reach the server. Check your connection and try again.");
+    }
+    setChecking(false);
+  };
+
+  return (
+    <div style={{ background: GRAY, minHeight: '100vh', fontFamily: "'Inter', sans-serif", color: TEXT, padding: '30px 20px', display: 'flex', alignItems: 'center' }}>
+      <div style={{ maxWidth: 400, margin: '0 auto', width: '100%' }}>
+        <h1 style={{ fontFamily: "'Oswald', sans-serif", fontSize: 22, fontWeight: 700, color: WHITE, marginBottom: 8 }}>Reset Your PIN</h1>
+        <p style={{ color: '#C9C6CA', fontSize: 13, marginBottom: 20 }}>Confirm your birth year to set a new PIN.</p>
+        <div style={{ background: WHITE, borderRadius: 14, padding: 20 }}>
+          <Field label="Birth year"><input type="number" inputMode="numeric" value={birthYear} onChange={e => setBirthYear(e.target.value)} /></Field>
+          <Field label="New PIN (4-6 digits)"><input type="tel" inputMode="numeric" value={newPin} onChange={e => setNewPin(e.target.value.replace(/\D/g, ''))} maxLength={6} /></Field>
+          <Field label="Confirm new PIN"><input type="tel" inputMode="numeric" value={confirmPin} onChange={e => setConfirmPin(e.target.value.replace(/\D/g, ''))} maxLength={6} /></Field>
+          {error && <div style={{ color: RED, fontSize: 12.5, marginBottom: 10 }}>{error}</div>}
+          <PrimaryButton onClick={submit} label={checking ? 'Checking…' : 'Set New PIN'} disabled={checking} />
+          <button onClick={onBack} style={{ width: '100%', background: 'none', border: 'none', color: MUTED, fontSize: 12.5, marginTop: 10, padding: 8 }}>← Back</button>
         </div>
       </div>
     </div>
