@@ -156,10 +156,11 @@ function RowStat({ label, emoji, value, target, unit, kind, note, gold }) {
         {gold && <span style={{ fontSize: 8, color: '#8A6D1D', fontWeight: 700, marginLeft: 'auto' }}>🔥7d</span>}
       </div>
       <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 19, fontWeight: 700, color, lineHeight: 1 }}>{Math.round(value)}<span style={{ fontSize: 10, color: MUTED, fontWeight: 500 }}>{unit}</span></div>
-      <div style={{ fontSize: 9.5, color: MUTED, marginTop: 2 }}>/ {target}{unit}{note ? ` · ${note}` : ''}</div>
+      <div style={{ fontSize: 9.5, color: MUTED, marginTop: 2 }}>/ {target}{unit}</div>
       <div style={{ height: 4, background: TRACK_BG, borderRadius: 2, marginTop: 6, overflow: 'hidden' }}>
         <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 2 }} />
       </div>
+      {note && <div style={{ fontSize: 9, color: MUTED, marginTop: 4 }}>{note}</div>}
     </div>
   );
 }
