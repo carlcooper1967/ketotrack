@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-<title>KetoTrack</title>
+<title>CarbTrack</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 fill=%22%233A3A3D%22/><polygon points=%2250,25 75,75 25,75%22 fill=%22%237A1F2B%22/></svg>" />
 <link rel="apple-touch-icon" href="/icon.png" />
 <meta name="theme-color" content="#1B5E3C" />
@@ -56,6 +56,12 @@ const MEALS = [
 ];
 
 const DEFAULT_TARGETS = { calories: 1800, protein: 90, netCarbs: 25, fat: 150, water: 100 };
+const LEVELS = [1, 2, 3].map((num, i) => {
+  const carbs = [20, 50, 100][i];
+  const calories = 1800, protein = 90;
+  const fat = Math.round((calories - protein * 4 - carbs * 4) / 9);
+  return { num, carbs, calories, protein, fat, water: 100 };
+});
 
 const load = (key, fallback) => {
   try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
@@ -212,7 +218,7 @@ function HomeScreenSteps() {
 }
 
 // =====================================================================
-function KetoTrack() {
+function CarbTrack() {
   const [profile, setProfile] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [selectedDate, setSelectedDate] = useState(todayISO());
@@ -470,7 +476,6 @@ function KetoTrack() {
     }
   }, [goldCards.protein, goldCards.netCarbs, goldCards.calories, goldCards.fat, goldCards.hydration, goldCards.training]);
 
-  const streak = streaks.protein;
 
   const weekComparison = useMemo(() => {
     const avgProtein = (offsetStart) => {
@@ -506,8 +511,8 @@ function KetoTrack() {
   const showGoalMetPrompt = goalMet && dismissed.goalMet !== goalWeight;
 
   const share = () => {
-    if (navigator.share) navigator.share({ title: 'KetoTrack', text: 'Check out KetoTrack, the keto macro tracker I\'ve been using — tap to try it:', url: window.location.href }).catch(() => {});
-    else { navigator.clipboard?.writeText(window.location.href); alert('Link copied — send it to anyone you want to share KetoTrack with!'); }
+    if (navigator.share) navigator.share({ title: 'CarbTrack', text: 'Check out CarbTrack, the keto macro tracker I\'ve been using — tap to try it:', url: window.location.href }).catch(() => {});
+    else { navigator.clipboard?.writeText(window.location.href); alert('Link copied — send it to anyone you want to share CarbTrack with!'); }
   };
 
   const exportCSV = () => {
@@ -545,7 +550,7 @@ function KetoTrack() {
         <div style={{ maxWidth: 480, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ width: 0, height: 0, borderLeft: '13px solid transparent', borderRight: '13px solid transparent', borderBottom: `21px solid ${GRAY}` }} />
-            <h1 style={{ fontFamily: "'Oswald', sans-serif", fontSize: 22, fontWeight: 700, margin: 0, color: WHITE, letterSpacing: '-0.01em' }}>KetoTrack</h1>
+            <h1 style={{ fontFamily: "'Oswald', sans-serif", fontSize: 22, fontWeight: 700, margin: 0, color: WHITE, letterSpacing: '-0.01em' }}>CarbTrack</h1>
           </div>
           <button onClick={() => setShowSettings(true)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 8, padding: '8px 10px', color: WHITE, fontSize: 15 }}>⚙</button>
         </div>
@@ -570,7 +575,7 @@ function KetoTrack() {
 
         <button onClick={share} style={{ display: 'block', width: '100%', maxWidth: 480, margin: '16px auto 0', background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: 10, padding: '11px 14px', textAlign: 'left', fontSize: 12.5 }}>
           <span style={{ color: 'rgba(255,255,255,0.75)' }}>Know someone who'd like this?  </span>
-          <span style={{ color: WHITE, fontWeight: 700 }}>Share KetoTrack →</span>
+          <span style={{ color: WHITE, fontWeight: 700 }}>Share CarbTrack →</span>
         </button>
       </div>
 
@@ -578,7 +583,7 @@ function KetoTrack() {
 
         {showInstallCard && (
           <div className="banner" style={{ background: '#F6F1F2', borderColor: BORDER }}>
-            <span style={{ fontSize: 13, color: TEXT }}>📱 Add KetoTrack to your Home Screen so it opens like a real app.</span>
+            <span style={{ fontSize: 13, color: TEXT }}>📱 Add CarbTrack to your Home Screen so it opens like a real app.</span>
             <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
               <button className="pill" onClick={() => setShowHome(true)}>Show me</button>
               <button onClick={() => persistDismissed({ install: true })} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 16 }}>✕</button>
@@ -615,18 +620,15 @@ function KetoTrack() {
           </div>
         )}
 
-        {(streak > 1 || weekComparison !== null) && (
-          <div style={{ display: 'flex', gap: 10, fontSize: 12, color: 'rgba(255,255,255,0.85)' }}>
-            {streak > 1 && <span>🔥 {streak}-day protein streak</span>}
-            {weekComparison !== null && weekComparison !== 0 && <span>{weekComparison > 0 ? '↑' : '↓'} {Math.abs(weekComparison)}g protein vs last week</span>}
-          </div>
-        )}
-
         <div style={{ display: 'flex', gap: 6 }}>
-          <RowStat label="Protein" emoji="🥩" value={totals.protein} target={targets.protein} unit="g" kind="floor" gold={goldCards.protein} />
-          <RowStat label="Net Carbs" emoji="🌾" value={totals.netCarbs} target={targets.netCarbs} unit="g" kind="ceiling" gold={goldCards.netCarbs} />
-          <RowStat label="Calories" emoji="🔥" value={netCalories} target={targets.calories} unit="" kind="ceiling" note={caloriesBurned > 0 ? `-${Math.round(caloriesBurned)} burned` : null} gold={goldCards.calories} />
-          <RowStat label="Fat" emoji="💧" value={totals.fat} target={targets.fat} unit="g" kind="floor" gold={goldCards.fat} />
+          <RowStat label="Protein" emoji="🥩" value={totals.protein} target={targets.protein} unit="g" kind="floor" gold={goldCards.protein}
+            note={[streaks.protein > 1 ? `🔥${streaks.protein}d` : null, weekComparison !== null && weekComparison !== 0 ? `${weekComparison > 0 ? '↑' : '↓'}${Math.abs(weekComparison)}g wk` : null].filter(Boolean).join(' · ') || null} />
+          <RowStat label="Net Carbs" emoji="🌾" value={totals.netCarbs} target={targets.netCarbs} unit="g" kind="ceiling" gold={goldCards.netCarbs}
+            note={streaks.netCarbs > 1 ? `🔥${streaks.netCarbs}d` : null} />
+          <RowStat label="Calories" emoji="🔥" value={netCalories} target={targets.calories} unit="" kind="ceiling" gold={goldCards.calories}
+            note={[caloriesBurned > 0 ? `-${Math.round(caloriesBurned)} burned` : null, streaks.calories > 1 ? `🔥${streaks.calories}d` : null].filter(Boolean).join(' · ') || null} />
+          <RowStat label="Fat" emoji="💧" value={totals.fat} target={targets.fat} unit="g" kind="floor" gold={goldCards.fat}
+            note={streaks.fat > 1 ? `🔥${streaks.fat}d` : null} />
         </div>
 
         <HydrationCard water={dayData.water} target={targets.water} onAdd={addWater} gold={goldCards.hydration} />
@@ -781,21 +783,72 @@ function KetoTrack() {
 function ProfileSetup({ onDone }) {
   const [f, setF] = useState({ name: '', age: '', height: '', currentWeight: '', goalWeight: '' });
   const [t, setT] = useState(DEFAULT_TARGETS);
+  const [showForm, setShowForm] = useState(false);
+  const [selectedLevel, setSelectedLevel] = useState(null);
   const num = (v) => parseFloat(v) || 0;
+
+  const pickLevel = (level) => {
+    if (level) {
+      setT({ calories: level.calories, protein: level.protein, netCarbs: level.carbs, fat: level.fat, water: level.water });
+      setSelectedLevel(level.num);
+    } else {
+      setSelectedLevel(null);
+    }
+    setShowForm(true);
+  };
+
+  const updateTarget = (key, value) => {
+    setT(prev => ({ ...prev, [key]: value }));
+    setSelectedLevel(null); // any manual edit clears the "Level N selected" tag
+  };
 
   const submit = () => {
     if (!f.name || !f.currentWeight) return;
     onDone({ name: f.name, age: num(f.age), height: f.height, currentWeight: num(f.currentWeight), goalWeight: num(f.goalWeight) || num(f.currentWeight), targets: t });
   };
 
+  if (!showForm) {
+    return (
+      <div style={{ background: GRAY, minHeight: '100vh', fontFamily: "'Inter', sans-serif", color: TEXT, padding: '30px 20px' }}>
+        <div style={{ maxWidth: 440, margin: '0 auto' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <div style={{ width: 0, height: 0, borderLeft: '13px solid transparent', borderRight: '13px solid transparent', borderBottom: `21px solid ${BURGUNDY}` }} />
+            <h1 style={{ fontFamily: "'Oswald', sans-serif", fontSize: 22, fontWeight: 700, color: WHITE, margin: 0 }}>Choose Your Starting Point</h1>
+          </div>
+          <p style={{ color: '#C9C6CA', fontSize: 13, marginBottom: 20, lineHeight: 1.5 }}>Pick a level to pre-fill your daily targets, or enter your own numbers manually.</p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
+            {LEVELS.map(level => (
+              <button key={level.num} onClick={() => pickLevel(level)} style={{ background: WHITE, border: 'none', borderRadius: 14, padding: '16px 14px', textAlign: 'left', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+                <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 15, fontWeight: 700, color: BURGUNDY, marginBottom: 6 }}>Level {level.num}</div>
+                <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 22, fontWeight: 700, color: TEXT }}>{level.carbs}<span style={{ fontSize: 11, color: MUTED, fontWeight: 500, display: 'block', marginTop: 2 }}>g carbs / day</span></div>
+              </button>
+            ))}
+            <button onClick={() => pickLevel(null)} style={{ background: 'transparent', border: '1.5px dashed rgba(255,255,255,0.5)', borderRadius: 14, padding: '16px 14px', textAlign: 'left' }}>
+              <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 14, fontWeight: 700, color: WHITE, marginBottom: 4 }}>Manual Entry</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}>Set your own targets</div>
+            </button>
+          </div>
+
+          <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: 10, padding: '12px 14px', fontSize: 11, color: '#D9D6DA', lineHeight: 1.5 }}>
+            These are general starting points, not medical advice. Talk to a doctor before starting a very low-carb diet, especially if you have diabetes, kidney issues, or take medications affected by carb intake.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ background: GRAY, minHeight: '100vh', fontFamily: "'Inter', sans-serif", color: TEXT, padding: '30px 20px' }}>
       <div style={{ maxWidth: 440, margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
           <div style={{ width: 0, height: 0, borderLeft: '13px solid transparent', borderRight: '13px solid transparent', borderBottom: `21px solid ${BURGUNDY}` }} />
-          <h1 style={{ fontFamily: "'Oswald', sans-serif", fontSize: 24, fontWeight: 700, color: WHITE, margin: 0 }}>Welcome to KetoTrack</h1>
+          <h1 style={{ fontFamily: "'Oswald', sans-serif", fontSize: 24, fontWeight: 700, color: WHITE, margin: 0 }}>Welcome to CarbTrack</h1>
         </div>
-        <p style={{ color: '#C9C6CA', fontSize: 13, marginBottom: 20 }}>Set up your profile to get started.</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+          <p style={{ color: '#C9C6CA', fontSize: 13, margin: 0 }}>Set up your profile to get started.</p>
+          <button onClick={() => setShowForm(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', fontSize: 12, textDecoration: 'underline' }}>← back</button>
+        </div>
 
         <div style={{ background: WHITE, borderRadius: 14, padding: 20 }}>
           <Field label="Name"><input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="Your name" /></Field>
@@ -806,13 +859,16 @@ function ProfileSetup({ onDone }) {
             <Field label="Goal weight (lbs)"><input type="number" value={f.goalWeight} onChange={e => setF({ ...f, goalWeight: e.target.value })} /></Field>
           </div>
 
-          <div style={{ fontSize: 12, fontWeight: 600, color: BURGUNDY, marginTop: 14, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Daily Targets — suggested, edit as you like</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, marginBottom: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: BURGUNDY, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Daily Targets — suggested, edit as you like</div>
+            {selectedLevel && <span style={{ fontSize: 10.5, fontWeight: 700, color: WHITE, background: BURGUNDY, borderRadius: 20, padding: '3px 9px' }}>Level {selectedLevel} selected</span>}
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <Field label="Calories"><input type="number" value={t.calories} onChange={e => setT({ ...t, calories: num(e.target.value) })} /></Field>
-            <Field label="Protein Goal (g)"><input type="number" value={t.protein} onChange={e => setT({ ...t, protein: num(e.target.value) })} /></Field>
-            <Field label="Net carb ceiling (g)"><input type="number" value={t.netCarbs} onChange={e => setT({ ...t, netCarbs: num(e.target.value) })} /></Field>
-            <Field label="Fat Goal (g)"><input type="number" value={t.fat} onChange={e => setT({ ...t, fat: num(e.target.value) })} /></Field>
-            <Field label="Hydration Goal (oz)"><input type="number" value={t.water} onChange={e => setT({ ...t, water: num(e.target.value) })} /></Field>
+            <Field label="Calories"><input type="number" value={t.calories} onChange={e => updateTarget('calories', num(e.target.value))} /></Field>
+            <Field label="Protein Goal (g)"><input type="number" value={t.protein} onChange={e => updateTarget('protein', num(e.target.value))} /></Field>
+            <Field label="Net carb ceiling (g)"><input type="number" value={t.netCarbs} onChange={e => updateTarget('netCarbs', num(e.target.value))} /></Field>
+            <Field label="Fat Goal (g)"><input type="number" value={t.fat} onChange={e => updateTarget('fat', num(e.target.value))} /></Field>
+            <Field label="Hydration Goal (oz)"><input type="number" value={t.water} onChange={e => updateTarget('water', num(e.target.value))} /></Field>
           </div>
 
           <PrimaryButton onClick={submit} label="Start Tracking" />
@@ -823,7 +879,7 @@ function ProfileSetup({ onDone }) {
         </div>
 
         <div style={{ marginTop: 16, padding: '14px 16px', background: WHITE, borderRadius: 12 }}>
-          <div style={{ fontFamily: "'Oswald', sans-serif", fontWeight: 700, fontSize: 13, color: BURGUNDY, marginBottom: 10 }}>📱 Add KetoTrack to Your Home Screen</div>
+          <div style={{ fontFamily: "'Oswald', sans-serif", fontWeight: 700, fontSize: 13, color: BURGUNDY, marginBottom: 10 }}>📱 Add CarbTrack to Your Home Screen</div>
           <HomeScreenSteps />
         </div>
       </div>
@@ -1604,7 +1660,7 @@ function HistoryModal({ targets, weightLog, onClose }) {
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<KetoTrack />);
+ReactDOM.createRoot(document.getElementById('root')).render(<CarbTrack />);
 </script>
 <script>
   var code = document.getElementById('app-source').textContent;
