@@ -306,6 +306,7 @@ function CarbTrack() {
   const [measureLog, setMeasureLog] = useState([]);
   const [sleepLog, setSleepLog] = useState([]);
   const [commonFoods, setCommonFoods] = useState([]);
+  const [mealTemplates, setMealTemplates] = useState([]);
   const [dismissed, setDismissed] = useState({});
 
   const [addFoodMeal, setAddFoodMeal] = useState(null);
@@ -332,7 +333,9 @@ function CarbTrack() {
   const [pickMealFor, setPickMealFor] = useState(null); // Frequent Foods item awaiting meal choice
   const [editRegular, setEditRegular] = useState(null);
   const [showRegulars, setShowRegulars] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const [confettiFor, setConfettiFor] = useState(null);
+  const [exceptionDaysState, setExceptionDaysState] = useState([]);
   const [expandedMeals, setExpandedMeals] = useState({});
 
   useEffect(() => {
@@ -345,6 +348,8 @@ function CarbTrack() {
       setSleepLog(load('kt-sleep-log', []));
       setCommonFoods(load('kt-common-foods', []));
       setDismissed(load('kt-dismissed', {}));
+      setExceptionDaysState(load('kt-exception-days', []));
+      setMealTemplates(load('kt-meal-templates', []));
       setLoaded(true);
 
       // PIN gate check — only meaningful once a profile exists (no point gating an empty first-run)
@@ -383,6 +388,7 @@ function CarbTrack() {
     persistSleep(next);
   };
   const persistCommon = (next) => { setCommonFoods(next); save('kt-common-foods', next); };
+  const persistTemplates = (next) => { setMealTemplates(next); save('kt-meal-templates', next); };
   const persistDismissed = (partial) => {
     setDismissed(prev => {
       const next = { ...prev, ...partial };
@@ -521,10 +527,18 @@ function CarbTrack() {
     return total;
   }, [measureLog]);
 
+  const EXCEPTION_DAYS_KEY = 'kt-exception-days';
+  const exceptionDays = exceptionDaysState;
+  const persistExceptionDays = (next) => { setExceptionDaysState(next); save(EXCEPTION_DAYS_KEY, next); };
+  const toggleExceptionDay = (date) => {
+    persistExceptionDays(exceptionDays.includes(date) ? exceptionDays.filter(d => d !== date) : [...exceptionDays, date]);
+  };
+
   const computeCategoryStreak = (getDayTotal, target, kind) => {
     let count = 0;
     for (let i = 1; i <= 90; i++) { // start at 1 (yesterday) — today's in-progress totals don't count toward the streak yet
       const d = iso(addDays(new Date(), -i));
+      if (exceptionDays.includes(d)) continue; // planned exception day — skip, doesn't count as pass or break
       const parsed = load(DAY_KEY(d), null);
       if (!parsed) break;
       const val = getDayTotal(parsed);
@@ -557,6 +571,9 @@ function CarbTrack() {
     fat: streaks.fat >= 7, hydration: streaks.hydration >= 7, training: streaks.training >= 7,
   }), [streaks]);
 
+  const weightMilestoneLevel = (startWeight && latestWeight) ? Math.floor(Math.max(0, startWeight - latestWeight) / 5) : 0;
+  const weightGold = weightMilestoneLevel >= 1;
+
   // trigger confetti once per calendar day, the day a category first reaches a 7+ streak
   useEffect(() => {
     const todayKey = todayISO();
@@ -570,6 +587,16 @@ function CarbTrack() {
       setTimeout(() => setConfettiFor(null), 2600);
     }
   }, [goldCards.protein, goldCards.netCarbs, goldCards.calories, goldCards.fat, goldCards.hydration, goldCards.training]);
+
+  // weight milestones are cumulative progress, not a daily streak — celebrate once per new 5lb milestone reached
+  useEffect(() => {
+    const lastCelebrated = dismissed.lastWeightMilestone || 0;
+    if (weightMilestoneLevel > lastCelebrated) {
+      setConfettiFor('weight');
+      persistDismissed({ lastWeightMilestone: weightMilestoneLevel });
+      setTimeout(() => setConfettiFor(null), 2600);
+    }
+  }, [weightMilestoneLevel]);
 
 
   const weekComparison = useMemo(() => {
@@ -720,6 +747,13 @@ function CarbTrack() {
           </div>
         )}
 
+        <button onClick={() => toggleExceptionDay(selectedDate)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', padding: 0, alignSelf: 'flex-start' }}>
+          <div style={{ width: 15, height: 15, borderRadius: 4, border: `1.5px solid ${exceptionDays.includes(selectedDate) ? '#E8C55A' : 'rgba(255,255,255,0.5)'}`, background: exceptionDays.includes(selectedDate) ? '#E8C55A' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            {exceptionDays.includes(selectedDate) && <span style={{ color: '#3A3A3D', fontSize: 10, fontWeight: 700 }}>✓</span>}
+          </div>
+          <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.85)' }}>Planned exception day {exceptionDays.includes(selectedDate) ? '(won\'t break streaks)' : ''}</span>
+        </button>
+
         <div style={{ display: 'flex', gap: 6 }}>
           <RowStat label="Protein" emoji="🥩" value={totals.protein} target={targets.protein} unit="g" kind="floor" gold={goldCards.protein}
             note={[streaks.protein > 1 ? `🔥${streaks.protein}d` : null, weekComparison !== null && weekComparison !== 0 ? `${weekComparison > 0 ? '↑' : '↓'}${Math.abs(weekComparison)}g wk` : null].filter(Boolean).join(' · ') || null} />
@@ -737,6 +771,13 @@ function CarbTrack() {
           <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>⭐ Frequent Foods</span>
           <span style={{ color: MUTED, fontSize: 13 }}>{commonFoods.length ? `${commonFoods.length} saved →` : 'None yet →'}</span>
         </button>
+
+        {mealTemplates.length > 0 && (
+          <button onClick={() => setShowTemplates(true)} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: `1px solid ${BORDER}`, width: '100%', textAlign: 'left' }}>
+            <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>📋 Meal Templates</span>
+            <span style={{ color: MUTED, fontSize: 13 }}>{mealTemplates.length} saved →</span>
+          </button>
+        )}
 
         {MEALS.map(m => (
           <MealSection key={m.key} meal={m} foods={dayData.meals[m.key] || []}
@@ -759,9 +800,9 @@ function CarbTrack() {
             <button onClick={() => setShowMeasureHistory(true)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 10, marginTop: 4, padding: 0, textAlign: 'left' }}>History →</button>
           </div>
 
-          <div className="card" style={{ padding: 12, display: 'flex', flexDirection: 'column', minHeight: 122 }}>
+          <div className={weightGold ? 'card gold-card' : 'card'} style={{ padding: 12, display: 'flex', flexDirection: 'column', minHeight: 122 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 10.5, letterSpacing: '0.03em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>Weight</span>
+              <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 10.5, letterSpacing: '0.03em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>Weight{weightGold && <span style={{ fontSize: 9, color: '#8A6D1D', fontWeight: 700, marginLeft: 5 }}>🔥{weightMilestoneLevel * 5}lb</span>}</span>
               <button className="pill" style={{ padding: '4px 7px', fontSize: 10 }} onClick={() => setShowWeightForm(true)}>+</button>
             </div>
             <div style={{ flex: 1 }}>
@@ -783,7 +824,7 @@ function CarbTrack() {
             </div>
             <div style={{ flex: 1 }}>
               {latestBp ? (
-                <div><span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700 }}>{latestBp.systolic}/{latestBp.diastolic}</span></div>
+                <div><span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700 }}>{latestBp.systolic}/{latestBp.diastolic}</span>{latestBp.pulse && <span style={{ fontSize: 11, color: MUTED, marginLeft: 6 }}>♥ {latestBp.pulse}</span>}</div>
               ) : <div style={{ color: MUTED, fontSize: 11 }}>None yet.</div>}
             </div>
             <button onClick={() => setShowBpHistory(true)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 10, marginTop: 4, padding: 0, textAlign: 'left' }}>History →</button>
@@ -847,11 +888,19 @@ function CarbTrack() {
         onSave={(updates) => { updateFood(editFood.mealKey, editFood.food.id, updates); setEditFood(null); }}
         onDelete={() => { removeFood(editFood.mealKey, editFood.food.id); setEditFood(null); }} />}
       {pickMealFor && <MealPickerModal item={pickMealFor} onClose={() => setPickMealFor(null)} onPick={(mealKey) => logRegularsToMeal(pickMealFor, mealKey)} />}
+      {showTemplates && (
+        <Modal title="📋 Meal Templates" onClose={() => setShowTemplates(false)}>
+          <TemplatesList templates={mealTemplates}
+            onPick={(t) => { setShowTemplates(false); setPickMealFor(t.items); }}
+            onDelete={(id) => persistTemplates(mealTemplates.filter(t => t.id !== id))} />
+        </Modal>
+      )}
       {showRegulars && (
         <Modal title="⭐ Frequent Foods" onClose={() => setShowRegulars(false)}>
           <RegularsList regulars={regularsSorted} remaining={{ netCarbs: Math.max(0, targets.netCarbs - totals.netCarbs), calories: Math.max(0, targets.calories - netCalories) }}
             onPick={(r) => { setShowRegulars(false); setPickMealFor(r); }} onEdit={(r) => { setShowRegulars(false); setEditRegular(r); }} onDelete={deleteRegular} onTogglePin={togglePinRegular}
-            onBatchPick={(items) => { setShowRegulars(false); setPickMealFor(items); }} onCleanup={cleanupFrequentFoods} />
+            onBatchPick={(items) => { setShowRegulars(false); setPickMealFor(items); }} onCleanup={cleanupFrequentFoods}
+            onSaveTemplate={(name, items) => { persistTemplates([...mealTemplates, { id: Date.now() + Math.random(), name, items }]); setShowRegulars(false); }} />
         </Modal>
       )}
       {editRegular && <EditRegularModal item={editRegular} onClose={() => setEditRegular(null)}
@@ -870,7 +919,7 @@ function CarbTrack() {
         onExport={exportCSV} onShowHome={() => { setShowSettings(false); setShowHome(true); }} onShowHistory={() => { setShowSettings(false); setShowHistory(true); }} />}
       {showHistory && <HistoryModal targets={targets} weightLog={weightLog} onClose={() => setShowHistory(false)} />}
       {showWeightHistory && <EntryHistoryModal title="Weight History" entries={weightLog} onClose={() => setShowWeightHistory(false)} renderRow={e => `${e.weight} lbs`} />}
-      {showBpHistory && <EntryHistoryModal title="Blood Pressure History" entries={bpLog} onClose={() => setShowBpHistory(false)} renderRow={e => `${e.systolic}/${e.diastolic}`} />}
+      {showBpHistory && <EntryHistoryModal title="Blood Pressure History" entries={bpLog} onClose={() => setShowBpHistory(false)} renderRow={e => `${e.systolic}/${e.diastolic}${e.pulse ? ' · ♥' + e.pulse : ''}`} />}
       {showMeasureHistory && <EntryHistoryModal title="Measurements History" entries={measureLog} onClose={() => setShowMeasureHistory(false)} renderRow={e => [e.waist && `W:${e.waist}`, e.chest && `C:${e.chest}`, e.hips && `H:${e.hips}`, e.arms && `A:${e.arms}`, e.thighs && `T:${e.thighs}`].filter(Boolean).join(' ')} />}
       {showSleepHistory && <EntryHistoryModal title="Sleep History" entries={sleepLog} onClose={() => setShowSleepHistory(false)} renderRow={e => `${e.hours} hrs · Q${e.quality}/5`} />}
       {showHome && <Modal title="Add to Home Screen" onClose={() => setShowHome(false)}><HomeScreenSteps /></Modal>}
@@ -1115,15 +1164,15 @@ function PinRecoverScreen({ onDone, onBack }) {
 }
 
 // ---------- Frequent Foods ----------
-function RegularsList({ regulars, remaining, onEdit, onDelete, onTogglePin, onBatchPick, onCleanup }) {
+function RegularsList({ regulars, remaining, onEdit, onDelete, onTogglePin, onBatchPick, onCleanup, onSaveTemplate }) {
   const [selected, setSelected] = useState([]);
   const [qtys, setQtys] = useState({});
   const [whatFits, setWhatFits] = useState(false);
   const [cleanupMsg, setCleanupMsg] = useState(null);
 
   const toggleSelect = (id) => {
-    if (selected.includes(id)) { setSelected(selected.filter(x => x !== id)); }
-    else { setSelected([...selected, id]); setQtys(q => ({ ...q, [id]: q[id] || 1 })); }
+    setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    setQtys(q => (q[id] ? q : { ...q, [id]: 1 }));
   };
   const setQty = (id, q) => setQtys(prev => ({ ...prev, [id]: Math.max(1, q) }));
 
@@ -1142,6 +1191,18 @@ function RegularsList({ regulars, remaining, onEdit, onDelete, onTogglePin, onBa
   const confirmBatch = () => {
     const items = regulars.filter(r => selected.includes(r.id)).map(r => ({ ...r, qty: qtys[r.id] || 1 }));
     if (items.length) onBatchPick(items);
+    setSelected([]); setQtys({});
+  };
+
+  const saveTemplate = () => {
+    const items = regulars.filter(r => selected.includes(r.id)).map(r => {
+      const q = qtys[r.id] || 1;
+      return { name: q !== 1 ? `${q}x ${r.name}` : r.name, protein: r.protein * q, carbs: r.carbs * q, fiber: r.fiber * q, fat: r.fat * q, calories: r.calories * q };
+    });
+    if (items.length === 0) return;
+    const name = window.prompt('Name this template (e.g. "My usual breakfast"):');
+    if (!name) return;
+    onSaveTemplate(name, items);
     setSelected([]); setQtys({});
   };
 
@@ -1198,10 +1259,31 @@ function RegularsList({ regulars, remaining, onEdit, onDelete, onTogglePin, onBa
       )}
 
       {selected.length > 0 && (
-        <div style={{ position: 'sticky', bottom: 0, left: 0, right: 0, background: WHITE, paddingTop: 10, marginTop: 14, boxShadow: '0 -8px 12px -6px rgba(0,0,0,0.08)' }}>
-          <PrimaryButton onClick={confirmBatch} label={`Add ${selected.length} item${selected.length > 1 ? 's' : ''}`} />
+        <div style={{ position: 'sticky', bottom: 0, left: 0, right: 0, background: WHITE, paddingTop: 10, marginTop: 14, boxShadow: '0 -8px 12px -6px rgba(0,0,0,0.08)', display: 'flex', gap: 8 }}>
+          <button onClick={saveTemplate} style={{ flex: 1, background: WHITE, border: `1.5px solid ${BURGUNDY}`, borderRadius: 9, padding: 13, color: BURGUNDY, fontWeight: 700, fontSize: 13 }}>Save as Template</button>
+          <div style={{ flex: 1 }}><PrimaryButton onClick={confirmBatch} label={`Add ${selected.length}`} /></div>
         </div>
       )}
+    </div>
+  );
+}
+
+function TemplatesList({ templates, onPick, onDelete }) {
+  if (templates.length === 0) return <div style={{ color: MUTED, fontSize: 13 }}>No templates saved yet. Check off a few items in Frequent Foods and tap "Save as Template."</div>;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {templates.map(t => {
+        const totals = t.items.reduce((acc, i) => ({ protein: acc.protein + i.protein, netC: acc.netC + Math.max(0, i.carbs - i.fiber), calories: acc.calories + i.calories }), { protein: 0, netC: 0, calories: 0 });
+        return (
+          <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 0', borderBottom: `1px solid ${BORDER}` }}>
+            <button onClick={() => onPick(t)} style={{ background: 'none', border: 'none', textAlign: 'left', flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>{t.name}</div>
+              <div style={{ fontSize: 12, color: MUTED }}>{t.items.length} item{t.items.length > 1 ? 's' : ''} · {Math.round(totals.protein)}g P · {Math.round(totals.netC)}g net C · {Math.round(totals.calories)} cal</div>
+            </button>
+            <button onClick={() => onDelete(t.id)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 15 }}>✕</button>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -1658,14 +1740,15 @@ function WeightModal({ onClose, onSave }) {
 }
 
 function BpModal({ onClose, onSave }) {
-  const [systolic, setSystolic] = useState(''); const [diastolic, setDiastolic] = useState('');
-  const submit = () => { if (!systolic || !diastolic) return; onSave({ date: todayISO(), systolic: parseInt(systolic), diastolic: parseInt(diastolic) }); };
+  const [systolic, setSystolic] = useState(''); const [diastolic, setDiastolic] = useState(''); const [pulse, setPulse] = useState('');
+  const submit = () => { if (!systolic || !diastolic) return; onSave({ date: todayISO(), systolic: parseInt(systolic), diastolic: parseInt(diastolic), pulse: pulse ? parseInt(pulse) : null }); };
   return (
     <Modal title="Log Blood Pressure" onClose={onClose}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <Field label="Systolic"><input type="number" value={systolic} onChange={e => setSystolic(e.target.value)} autoFocus /></Field>
         <Field label="Diastolic"><input type="number" value={diastolic} onChange={e => setDiastolic(e.target.value)} /></Field>
       </div>
+      <Field label="Pulse (optional)"><input type="number" value={pulse} onChange={e => setPulse(e.target.value)} placeholder="bpm" /></Field>
       <PrimaryButton onClick={submit} />
     </Modal>
   );
