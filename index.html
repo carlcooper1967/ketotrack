@@ -20,7 +20,7 @@
   .ghostbtn { background: #F6F1F2; border: 1px solid #E9E7ED; border-radius: 8px; padding: 7px 10px; color: #7A1F2B; display: flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; }
   .banner { background: #FDF2E9; border: 1px solid #F2D9BC; border-radius: 12px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
   .card { transition: background 2.2s ease, border-color 2.2s ease; }
-  .gold-card { background: linear-gradient(135deg, #FFFBF0, #F4D976) !important; border-color: #C9A227 !important; box-shadow: 0 0 0 1px rgba(201,162,39,0.35), 0 3px 10px rgba(201,162,39,0.28) !important; }
+  .gold-card { background: linear-gradient(135deg, #FFD700, #C9971A) !important; border-color: #8A6D1D !important; box-shadow: 0 0 0 1.5px #8A6D1D, 0 4px 12px rgba(138,109,29,0.4) !important; }
   .confetti-piece { position: fixed; top: -20px; width: 8px; height: 14px; opacity: 0.9; z-index: 999; animation: confetti-fall linear forwards; }
   @keyframes confetti-fall {
     0% { transform: translateY(0) rotate(0deg); opacity: 1; }
@@ -55,6 +55,7 @@ const MEALS = [
   { key: 'snacks', label: 'Snacks', emoji: '🍪' },
 ];
 
+const BUILD_NUMBER = 24;
 const DEFAULT_TARGETS = { calories: 1800, protein: 90, netCarbs: 25, fat: 150, water: 100 };
 const LEVELS = [1, 2, 3].map((num, i) => {
   const carbs = [20, 50, 100][i];
@@ -99,6 +100,7 @@ const queueSyncOp = (key, value, deleted) => {
   syncPushTimer = setTimeout(flushSyncQueue, 1500);
 };
 
+const LAST_SYNC_KEY = 'kt-last-sync';
 const flushSyncQueue = async () => {
   let queue;
   try { queue = JSON.parse(localStorage.getItem(SYNC_QUEUE_KEY) || '{}'); } catch (e) { queue = {}; }
@@ -107,7 +109,7 @@ const flushSyncQueue = async () => {
   try {
     const deviceId = getDeviceId();
     const res = await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deviceId, ops }) });
-    if (res.ok) localStorage.setItem(SYNC_QUEUE_KEY, '{}');
+    if (res.ok) { localStorage.setItem(SYNC_QUEUE_KEY, '{}'); localStorage.setItem(LAST_SYNC_KEY, String(Date.now())); }
   } catch (e) { /* offline — queue stays for next flush attempt */ }
 };
 
@@ -126,6 +128,7 @@ const pullFromCloud = async () => {
 const reconcileWithCloud = async () => {
   const cloud = await pullFromCloud();
   if (cloud === null) return 'offline'; // couldn't reach the backend — work from local storage as-is
+  localStorage.setItem(LAST_SYNC_KEY, String(Date.now()));
   const cloudKeys = Object.keys(cloud.data || {});
   if (cloudKeys.length > 0) {
     cloudKeys.forEach(k => { try { localStorage.setItem(k, cloud.data[k]); } catch (e) {} });
@@ -1024,7 +1027,7 @@ function ProfileSetup({ onDone }) {
         </div>
 
         <div style={{ marginTop: 16, padding: '12px 14px', background: 'rgba(255,255,255,0.08)', borderRadius: 10, fontSize: 12, color: '#D9D6DA', lineHeight: 1.5 }}>
-          Your data is saved only in this device's browser — it isn't backed up anywhere else. Clearing your browser data, or switching to a different phone or browser, will erase your history. Use the export option in Settings to back up your data periodically.
+          Your data syncs automatically to the cloud once you set up a PIN next, so it's protected even if you switch phones or clear your browser. Until then, it's saved only on this device.
         </div>
 
         <div style={{ marginTop: 16, padding: '14px 16px', background: WHITE, borderRadius: 12 }}>
@@ -1043,6 +1046,7 @@ function PinSetupScreen({ onDone }) {
   const [birthYear, setBirthYear] = useState('');
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [showReconnect, setShowReconnect] = useState(false);
 
   const submit = async () => {
     setError(null);
@@ -1062,6 +1066,8 @@ function PinSetupScreen({ onDone }) {
     setSaving(false);
   };
 
+  if (showReconnect) return <PinReconnectScreen onBack={() => setShowReconnect(false)} />;
+
   return (
     <div style={{ background: GRAY, minHeight: '100vh', fontFamily: "'Inter', sans-serif", color: TEXT, padding: '30px 20px', display: 'flex', alignItems: 'center' }}>
       <div style={{ maxWidth: 400, margin: '0 auto', width: '100%' }}>
@@ -1076,6 +1082,49 @@ function PinSetupScreen({ onDone }) {
           {error && <div style={{ color: RED, fontSize: 12.5, marginBottom: 10 }}>{error}</div>}
           <PrimaryButton onClick={submit} label={saving ? 'Saving…' : 'Set PIN'} disabled={saving} />
           <button onClick={onDone} style={{ width: '100%', background: 'none', border: 'none', color: MUTED, fontSize: 12.5, marginTop: 10, padding: 8 }}>Skip for now</button>
+        </div>
+        <button onClick={() => setShowReconnect(true)} style={{ width: '100%', background: 'none', border: 'none', color: 'rgba(255,255,255,0.75)', fontSize: 12.5, marginTop: 16, padding: 8, textAlign: 'center' }}>Already have data on another device? Reconnect →</button>
+      </div>
+    </div>
+  );
+}
+
+function PinReconnectScreen({ onBack }) {
+  const [pin, setPin] = useState('');
+  const [birthYear, setBirthYear] = useState('');
+  const [error, setError] = useState(null);
+  const [checking, setChecking] = useState(false);
+
+  const submit = async () => {
+    setError(null);
+    if (!pin || !birthYear) { setError('Enter both your PIN and birth year.'); return; }
+    setChecking(true);
+    try {
+      const res = await fetch('/api/auth?action=reconnect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin, birthYear: parseInt(birthYear) }) });
+      const data = await res.json();
+      if (data.valid && data.deviceId) {
+        localStorage.setItem('kt-device-id', data.deviceId);
+        window.location.reload(); // fresh load pulls this device's data from the cloud under the adopted ID
+      } else {
+        setError("That PIN and birth year combination doesn't match any existing data.");
+      }
+    } catch (e) {
+      setError("Couldn't reach the server. Check your connection and try again.");
+    }
+    setChecking(false);
+  };
+
+  return (
+    <div style={{ background: GRAY, minHeight: '100vh', fontFamily: "'Inter', sans-serif", color: TEXT, padding: '30px 20px', display: 'flex', alignItems: 'center' }}>
+      <div style={{ maxWidth: 400, margin: '0 auto', width: '100%' }}>
+        <h1 style={{ fontFamily: "'Oswald', sans-serif", fontSize: 22, fontWeight: 700, color: WHITE, marginBottom: 8 }}>Reconnect to Your Data</h1>
+        <p style={{ color: '#C9C6CA', fontSize: 13, marginBottom: 20, lineHeight: 1.5 }}>Enter the PIN and birth year from your other device to bring your data here.</p>
+        <div style={{ background: WHITE, borderRadius: 14, padding: 20 }}>
+          <Field label="PIN"><input type="tel" inputMode="numeric" value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, ''))} maxLength={6} autoFocus /></Field>
+          <Field label="Birth year"><input type="number" inputMode="numeric" value={birthYear} onChange={e => setBirthYear(e.target.value)} /></Field>
+          {error && <div style={{ color: RED, fontSize: 12.5, marginBottom: 10 }}>{error}</div>}
+          <PrimaryButton onClick={submit} label={checking ? 'Checking…' : 'Reconnect'} disabled={checking} />
+          <button onClick={onBack} style={{ width: '100%', background: 'none', border: 'none', color: MUTED, fontSize: 12.5, marginTop: 10, padding: 8 }}>← Back</button>
         </div>
       </div>
     </div>
@@ -1814,10 +1863,42 @@ function SleepModal({ initial, forDate, onClose, onSave }) {
 function SettingsModal({ profile, onClose, onSave, onExport, onShowHome, onShowHistory }) {
   const [t, setT] = useState(profile.targets);
   const [goalWeight, setGoalWeight] = useState(profile.goalWeight);
+  const [showLevelPicker, setShowLevelPicker] = useState(false);
   const num = (v) => parseFloat(v) || 0;
+
+  const lastSyncRaw = (() => { try { return localStorage.getItem('kt-last-sync'); } catch (e) { return null; } })();
+  const lastSyncText = lastSyncRaw ? new Date(parseInt(lastSyncRaw)).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Not yet synced';
+
+  if (showLevelPicker) {
+    return (
+      <Modal title="Change Goal Level" onClose={() => setShowLevelPicker(false)}>
+        <p style={{ fontSize: 12.5, color: MUTED, marginBottom: 16, lineHeight: 1.5 }}>Pick a level to refill your targets below — still editable before you save.</p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
+          {LEVELS.map(level => (
+            <button key={level.num} onClick={() => { setT({ calories: level.calories, protein: level.protein, netCarbs: level.carbs, fat: level.fat, water: level.water }); setShowLevelPicker(false); }} style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 12, padding: '14px 8px', textAlign: 'center' }}>
+              <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, fontWeight: 700, color: BURGUNDY, marginBottom: 4 }}>Level {level.num}</div>
+              <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700 }}>{level.carbs}<span style={{ fontSize: 10, color: MUTED, fontWeight: 500, display: 'block' }}>g carbs</span></div>
+            </button>
+          ))}
+        </div>
+        <button onClick={() => setShowLevelPicker(false)} style={{ width: '100%', background: 'none', border: 'none', color: MUTED, fontSize: 12.5, marginTop: 10, padding: 8 }}>← Back</button>
+      </Modal>
+    );
+  }
+
   return (
     <Modal title="Settings" onClose={onClose}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: BURGUNDY, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Daily Targets</div>
+      <div style={{ background: '#F6F1F2', borderRadius: 10, padding: '12px 14px', marginBottom: 18 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: BURGUNDY, marginBottom: 4 }}>Created by Carl Cooper and his AI assistant</div>
+        <div style={{ fontSize: 11.5, color: MUTED, marginBottom: 6 }}>Suggestions, questions, or comments welcome:</div>
+        <div style={{ fontSize: 11.5, color: TEXT }}>817-454-7267</div>
+        <div style={{ fontSize: 11.5, color: TEXT }}>carlcooper@lynchlegacyexp.com</div>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: BURGUNDY, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Daily Targets</div>
+        <button onClick={() => setShowLevelPicker(true)} style={{ background: 'none', border: 'none', color: BURGUNDY, fontSize: 11.5, fontWeight: 600 }}>Change Goal Level</button>
+      </div>
       <Field label="Protein Goal (g)"><input type="number" value={t.protein} onChange={e => setT({ ...t, protein: num(e.target.value) })} /></Field>
       <Field label="Fat Goal (g)"><input type="number" value={t.fat} onChange={e => setT({ ...t, fat: num(e.target.value) })} /></Field>
       <Field label="Net carb ceiling (g)"><input type="number" value={t.netCarbs} onChange={e => setT({ ...t, netCarbs: num(e.target.value) })} /></Field>
@@ -1831,7 +1912,8 @@ function SettingsModal({ profile, onClose, onSave, onExport, onShowHome, onShowH
       <button className="ghostbtn" onClick={onExport} style={{ width: '100%', justifyContent: 'center', padding: 12, marginBottom: 10 }}>⬇ Export Data (CSV)</button>
       <button className="ghostbtn" onClick={onShowHome} style={{ width: '100%', justifyContent: 'center', padding: 12 }}>📱 Add to Home Screen</button>
 
-      <div style={{ marginTop: 16, padding: '10px 12px', background: '#F6F1F2', borderRadius: 10, fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>Data is saved only in this device's browser. Export regularly to keep a backup.</div>
+      <div style={{ marginTop: 16, padding: '10px 12px', background: '#F6F1F2', borderRadius: 10, fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>Your data syncs automatically to the cloud, protected by your PIN.</div>
+      <div style={{ marginTop: 10, fontSize: 10.5, color: MUTED, textAlign: 'center' }}>Build {BUILD_NUMBER} · Last synced: {lastSyncText}</div>
     </Modal>
   );
 }
