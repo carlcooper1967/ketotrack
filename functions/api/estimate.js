@@ -5,17 +5,23 @@
 // Requires an environment variable GEMINI_API_KEY to be set in the
 // Cloudflare Pages project (Settings -> Environment variables).
 
+const HYDRATION_RULE = `For each food item, also determine if it is a hydrating drink. Hydrating drinks include: water, unsweetened tea, coffee, sparkling water, and diet soda. NOT hydrating: alcohol, and drinks that are really food (milkshakes, protein shakes — these are already counted as food macros). If a food item is a hydrating drink, include a "hydrationOz" field with your best estimate of its volume in fluid ounces. Omit "hydrationOz" entirely for non-drink or non-hydrating items.`;
+
 const PROMPT_TEXT = `You are a nutrition estimator. The user will describe one or more foods they ate, possibly including brand names and restaurant items. Identify each distinct food item and estimate its nutrition.
 
+${HYDRATION_RULE}
+
 Respond with ONLY valid JSON (no markdown, no commentary), in this exact shape:
-{"foods":[{"name":"string","protein":number,"carbs":number,"fiber":number,"fat":number,"calories":number}]}
+{"foods":[{"name":"string","protein":number,"carbs":number,"fiber":number,"fat":number,"calories":number,"hydrationOz":number}]}
 
 All numeric values are grams (protein, carbs, fiber, fat) or kcal (calories), for the full portion described. If the user gives a quantity or size, use it. If unsure of an exact branded product, give your best reasonable estimate rather than refusing.`;
 
 const PROMPT_PHOTO = `You are a nutrition estimator. Look at this photo of a meal or food item and identify each distinct food you can see, estimating a realistic portion size for each.
 
+${HYDRATION_RULE}
+
 Respond with ONLY valid JSON (no markdown, no commentary), in this exact shape:
-{"foods":[{"name":"string","protein":number,"carbs":number,"fiber":number,"fat":number,"calories":number}]}
+{"foods":[{"name":"string","protein":number,"carbs":number,"fiber":number,"fat":number,"calories":number,"hydrationOz":number}]}
 
 All numeric values are grams (protein, carbs, fiber, fat) or kcal (calories), for the estimated portion shown. Give your best reasonable estimate rather than refusing.`;
 
@@ -25,6 +31,13 @@ Respond with ONLY valid JSON (no markdown, no commentary), in this exact shape:
 {"foods":[{"name":"string","protein":number,"carbs":number,"fiber":number,"fat":number,"calories":number}]}
 
 All numeric values are grams (protein, carbs, fiber, fat) or kcal (calories), for one serving of that item as sold. Ignore non-food line items (tax, tip, fees, drinks with no nutrition relevance only if truly ambiguous). This is a single fast-food meal receipt, not a grocery receipt — give your best reasonable estimate for each item rather than refusing.`;
+
+const PROMPT_WORKOUT = `You are reading a screenshot of an Apple Watch or Fitness app workout summary screen. Extract the workout data shown.
+
+Respond with ONLY valid JSON (no markdown, no commentary), in this exact shape:
+{"type":"string","duration":number,"distance":number,"activeCalories":number,"avgHeartRate":number,"avgSpeed":number,"cadence":number}
+
+"type" should be one of: Strength, Cardio, Walk, Cycling, Mobility, Mixed — pick the closest match to the workout type shown. duration is in minutes, distance in miles, activeCalories in kcal, avgHeartRate in bpm, avgSpeed in mph, cadence in rpm. Omit or use 0 for any field not shown on screen. Give your best reading of the numbers rather than refusing.`;
 
 function extractJson(text) {
   const match = text.match(/\{[\s\S]*\}/);
@@ -49,7 +62,7 @@ export async function onRequestPost(context) {
         return new Response(JSON.stringify({ error: 'bad_request', message: 'No text provided.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
       }
       parts = [{ text: PROMPT_TEXT + '\n\nUser described: ' + body.text }];
-    } else if (mode === 'photo' || mode === 'receipt') {
+    } else if (mode === 'photo' || mode === 'receipt' || mode === 'workout_photo') {
       if (!body.image) {
         return new Response(JSON.stringify({ error: 'bad_request', message: 'No image provided.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
       }
@@ -58,12 +71,13 @@ export async function onRequestPost(context) {
       if (!match) {
         return new Response(JSON.stringify({ error: 'bad_request', message: 'Image must be a base64 data URL.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
       }
+      const promptText = mode === 'receipt' ? PROMPT_RECEIPT : mode === 'workout_photo' ? PROMPT_WORKOUT : PROMPT_PHOTO;
       parts = [
-        { text: mode === 'receipt' ? PROMPT_RECEIPT : PROMPT_PHOTO },
+        { text: promptText },
         { inline_data: { mime_type: match[1], data: match[2] } },
       ];
     } else {
-      return new Response(JSON.stringify({ error: 'bad_request', message: 'mode must be "text", "photo", or "receipt".' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ error: 'bad_request', message: 'mode must be "text", "photo", "receipt", or "workout_photo".' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
     }
 
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`;
@@ -85,7 +99,7 @@ export async function onRequestPost(context) {
     const text = geminiJson?.candidates?.[0]?.content?.parts?.[0]?.text || '';
     const parsed = extractJson(text);
 
-    if (!Array.isArray(parsed.foods)) throw new Error('Malformed response shape');
+    if (mode !== 'workout_photo' && !Array.isArray(parsed.foods)) throw new Error('Malformed response shape');
 
     return new Response(JSON.stringify(parsed), { status: 200, headers: { 'Content-Type': 'application/json' } });
   } catch (e) {

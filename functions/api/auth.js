@@ -28,6 +28,21 @@ export async function onRequestPost({ request, env }) {
     const action = url.searchParams.get('action');
     const body = await request.json();
     const { deviceId } = body;
+
+    if (action === 'reconnect') {
+      const { pin, birthYear } = body;
+      if (!pin || !birthYear) return json({ error: 'bad_request', message: 'pin and birthYear are required' }, 400);
+      const { results } = await env.DB.prepare('SELECT device_id, pin_hash, salt FROM device_auth WHERE birth_year = ?').bind(parseInt(birthYear)).all();
+      for (const row of results) {
+        const attemptHash = await hashPin(pin, row.salt);
+        if (attemptHash === row.pin_hash) {
+          await env.DB.prepare('UPDATE device_auth SET last_verified_month = ? WHERE device_id = ?').bind(currentMonthKey(), row.device_id).run();
+          return json({ valid: true, deviceId: row.device_id });
+        }
+      }
+      return json({ valid: false, reason: 'no_match' });
+    }
+
     if (!deviceId) return json({ error: 'bad_request', message: 'deviceId is required' }, 400);
 
     if (action === 'check') {
