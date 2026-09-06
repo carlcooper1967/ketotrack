@@ -55,7 +55,7 @@ const MEALS = [
   { key: 'snacks', label: 'Snacks', emoji: '🍪' },
 ];
 
-const BUILD_NUMBER = 27;
+const BUILD_NUMBER = 28;
 const DEFAULT_TARGETS = { calories: 1800, protein: 90, netCarbs: 25, fat: 150, water: 100 };
 const LEVELS = [1, 2, 3].map((num, i) => {
   const carbs = [20, 50, 100][i];
@@ -330,6 +330,7 @@ function CarbTrack() {
   const [pendingTrainingType, setPendingTrainingType] = useState(null);
   const [showTrainingMethod, setShowTrainingMethod] = useState(false);
   const [showWeightHistory, setShowWeightHistory] = useState(false);
+  const [showTrainingHistory, setShowTrainingHistory] = useState(false);
   const [showBpHistory, setShowBpHistory] = useState(false);
   const [showMeasureHistory, setShowMeasureHistory] = useState(false);
   const [showSleepHistory, setShowSleepHistory] = useState(false);
@@ -344,6 +345,8 @@ function CarbTrack() {
   const [showTemplates, setShowTemplates] = useState(false);
   const [confettiFor, setConfettiFor] = useState(null);
   const [showCoach, setShowCoach] = useState(false);
+  const [dailyQuote, setDailyQuote] = useState(null);
+  const [quoteExpanded, setQuoteExpanded] = useState(false);
   const [coachText, setCoachText] = useState(null);
   const [coachLoading, setCoachLoading] = useState(false);
   const [coachError, setCoachError] = useState(null);
@@ -474,24 +477,48 @@ function CarbTrack() {
   // one-time cleanup: strip leading quantities from names, merge items that match after normalization,
   // averaging their per-unit macros and combining frequency counts
   const cleanupFrequentFoods = () => {
+    const UNIT_WORDS = ['slice', 'slices', 'piece', 'pieces', 'pc', 'pcs', 'cup', 'cups', 'tbsp', 'tablespoon', 'tablespoons', 'tsp', 'teaspoon', 'teaspoons', 'oz', 'ounce', 'ounces', 'serving', 'servings', 'strip', 'strips', 'link', 'links'];
+    const SINGULAR = { slices: 'slice', pieces: 'piece', pcs: 'pc', cups: 'cup', tablespoons: 'tbsp', tablespoon: 'tbsp', teaspoons: 'tsp', teaspoon: 'tsp', ounces: 'oz', ounce: 'oz', servings: 'serving', strips: 'strip', links: 'link' };
     const normalize = (name) => {
-      const m = name.trim().match(/^(\d+(?:\.\d+)?)\s+(.*)$/);
+      const trimmed = name.trim();
+      // compound pattern: "2 slices of bread" / "2 slices bread" — leading number, a known unit word, optional "of", then the food name
+      const compound = trimmed.match(/^(\d+(?:\.\d+)?)\s+([a-zA-Z]+)\s+(?:of\s+)?(.*)$/i);
+      if (compound && UNIT_WORDS.includes(compound[2].toLowerCase())) {
+        const qty = parseFloat(compound[1]) || 1;
+        const unit = SINGULAR[compound[2].toLowerCase()] || compound[2].toLowerCase();
+        const rest = compound[3].trim();
+        let key = rest.toLowerCase().trim();
+        if (key.endsWith('s') && key.length > 3) key = key.slice(0, -1);
+        return { qty, rest, key, unit };
+      }
+      // plain leading number: "2 Eggs"
+      const m = trimmed.match(/^(\d+(?:\.\d+)?)\s+(.*)$/);
       const qty = m ? parseFloat(m[1]) : 1;
-      const rest = m ? m[2] : name.trim();
+      const rest = m ? m[2] : trimmed;
       let key = rest.toLowerCase().trim();
       if (key.endsWith('s') && key.length > 3) key = key.slice(0, -1);
-      return { qty: qty || 1, rest, key };
+      return { qty: qty || 1, rest, key, unit: null };
     };
     const groups = {};
     commonFoods.forEach(cf => {
-      const { qty, rest, key } = normalize(cf.name);
+      const { qty, rest, key, unit } = normalize(cf.name);
       const groupKey = (cf.restaurant || '') + '|' + key;
-      (groups[groupKey] = groups[groupKey] || []).push({ ...cf, _qty: qty, _rest: rest });
+      (groups[groupKey] = groups[groupKey] || []).push({ ...cf, _qty: qty, _rest: rest, _unit: unit });
     });
     const merged = [];
     let mergedCount = 0;
     Object.values(groups).forEach(items => {
-      if (items.length === 1) { merged.push(commonFoods.find(cf => cf.id === items[0].id)); return; }
+      if (items.length === 1) {
+        // even a single unmatched item may still carry a detected unit worth applying (e.g. "2 slices of bread" alone)
+        const original = commonFoods.find(cf => cf.id === items[0].id);
+        if (items[0]._unit && items[0]._qty > 1) {
+          merged.push({ ...original, name: items[0]._rest, unit: items[0]._unit,
+            protein: original.protein / items[0]._qty, carbs: original.carbs / items[0]._qty, fiber: original.fiber / items[0]._qty, fat: original.fat / items[0]._qty, calories: original.calories / items[0]._qty });
+        } else {
+          merged.push(original);
+        }
+        return;
+      }
       mergedCount += items.length - 1;
       const perUnit = items.map(it => ({ protein: it.protein / it._qty, carbs: it.carbs / it._qty, fiber: it.fiber / it._qty, fat: it.fat / it._qty, calories: it.calories / it._qty }));
       const avg = perUnit.reduce((acc, p) => ({ protein: acc.protein + p.protein, carbs: acc.carbs + p.carbs, fiber: acc.fiber + p.fiber, fat: acc.fat + p.fat, calories: acc.calories + p.calories }), { protein: 0, carbs: 0, fiber: 0, fat: 0, calories: 0 });
@@ -499,8 +526,9 @@ function CarbTrack() {
       const totalCount = items.reduce((s, it) => s + (it.count || 1), 0);
       const anyPinned = items.some(it => it.pinned);
       const canonical = items.reduce((a, b) => (b.count || 1) > (a.count || 1) ? b : a);
+      const detectedUnit = items.find(it => it._unit)?._unit || canonical.unit || null;
       merged.push({
-        id: canonical.id, name: canonical._rest, restaurant: canonical.restaurant || null,
+        id: canonical.id, name: canonical._rest, restaurant: canonical.restaurant || null, unit: detectedUnit,
         protein: avg.protein / n, carbs: avg.carbs / n, fiber: avg.fiber / n, fat: avg.fat / n, calories: avg.calories / n,
         count: totalCount, pinned: anyPinned,
       });
@@ -617,6 +645,17 @@ function CarbTrack() {
   }, [weightMilestoneLevel]);
 
   // ---------- Smart Coach: weekly AI recap ----------
+  const getAllTrainingHistory = () => {
+    const entries = [];
+    for (let i = 0; i <= 365; i++) {
+      const d = iso(addDays(new Date(), -i));
+      const parsed = load(DAY_KEY(d), null);
+      if (!parsed || !parsed.workouts || parsed.workouts.length === 0) continue;
+      parsed.workouts.forEach(w => entries.push({ ...w, date: d }));
+    }
+    return entries;
+  };
+
   const buildCoachSummary = () => {
     const weeks = [];
     for (let w = 0; w < 6; w++) { // this week + 5 prior weeks of trend context
@@ -661,6 +700,34 @@ function CarbTrack() {
     }
     setCoachLoading(false);
   };
+
+  // daily motivational quote — one per day, rotating through a 50-quote batch with no repeats until it cycles
+  useEffect(() => {
+    if (!loaded || !profile) return;
+    (async () => {
+      const todayKey = todayISO();
+      const cached = load('kt-quote-today', null);
+      if (cached && cached.date === todayKey) { setDailyQuote(cached.quote); return; }
+
+      let batch = load('kt-quote-batch', []);
+      let shown = load('kt-quote-shown-indices', []);
+      if (batch.length === 0 || shown.length >= batch.length) {
+        try {
+          const res = await fetch('/api/quote');
+          const data = await res.json();
+          if (data.quotes && data.quotes.length > 0) { batch = data.quotes; shown = []; save('kt-quote-batch', batch); }
+        } catch (e) { /* offline — fall back to whatever's cached, or show nothing */ }
+      }
+      if (batch.length === 0) return;
+      const available = batch.map((_, i) => i).filter(i => !shown.includes(i));
+      const pickPool = available.length > 0 ? available : batch.map((_, i) => i);
+      const idx = pickPool[Math.floor(Math.random() * pickPool.length)];
+      const quote = batch[idx];
+      save('kt-quote-shown-indices', [...shown, idx]);
+      save('kt-quote-today', { date: todayKey, quote });
+      setDailyQuote(quote);
+    })();
+  }, [loaded, profile]);
 
   // auto-trigger on the first day of a new week (Sunday), once per week
   useEffect(() => {
@@ -834,6 +901,21 @@ function CarbTrack() {
           <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.85)' }}>Planned exception day {exceptionDays.includes(selectedDate) ? '(won\'t break streaks)' : ''}</span>
         </button>
 
+        {dailyQuote && (
+          <div className="card" style={{ padding: 14 }}>
+            <div style={{
+              fontSize: 13, fontStyle: 'italic', color: TEXT, lineHeight: 1.5,
+              ...(quoteExpanded ? {} : { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }),
+            }}>"{dailyQuote.text}"</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+              <span style={{ fontSize: 11.5, color: MUTED }}>— {dailyQuote.author || 'Unknown'}</span>
+              {dailyQuote.text.length > 90 && (
+                <button onClick={() => setQuoteExpanded(!quoteExpanded)} style={{ background: 'none', border: 'none', color: BURGUNDY, fontSize: 11.5, fontWeight: 600 }}>{quoteExpanded ? 'See less' : 'See more'}</button>
+              )}
+            </div>
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: 6 }}>
           <RowStat label="Protein" emoji="🥩" value={totals.protein} target={targets.protein} unit="g" kind="floor" gold={goldCards.protein}
             note={[streaks.protein > 1 ? `🔥${streaks.protein}d` : null, weekComparison !== null && weekComparison !== 0 ? `${weekComparison > 0 ? '↑' : '↓'}${Math.abs(weekComparison)}g wk` : null].filter(Boolean).join(' · ') || null} />
@@ -952,6 +1034,7 @@ function CarbTrack() {
               })}
             </div>
           )}
+          <button onClick={() => setShowTrainingHistory(true)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 11, marginTop: 10, padding: 0, textAlign: 'left' }}>History →</button>
         </div>
 
         <a href="https://www.dietdoctor.com" target="_blank" rel="noopener noreferrer" className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textDecoration: 'none' }}>
@@ -968,6 +1051,10 @@ function CarbTrack() {
         onSave={(updates) => { updateFood(editFood.mealKey, editFood.food.id, updates); setEditFood(null); }}
         onDelete={() => { removeFood(editFood.mealKey, editFood.food.id); setEditFood(null); }} />}
       {pickMealFor && <MealPickerModal item={pickMealFor} onClose={() => setPickMealFor(null)} onPick={(mealKey) => logRegularsToMeal(pickMealFor, mealKey)} />}
+      {showTrainingHistory && (
+        <EntryHistoryModal title="Training History" entries={getAllTrainingHistory()} onClose={() => setShowTrainingHistory(false)}
+          renderRow={w => `${w.type} · ${w.duration}min${w.distance ? ` · ${w.distance}mi` : ''}${w.weightLifted ? ` · ${w.weightLifted}lbs×${w.reps || '?'}` : ''}${w.activeCalories ? ` · ${w.activeCalories}cal` : ''}`} />
+      )}
       {showTemplates && (
         <Modal title="📋 Meal Templates" onClose={() => setShowTemplates(false)}>
           <TemplatesList templates={mealTemplates}
@@ -1306,6 +1393,8 @@ function RegularsList({ regulars, remaining, onEdit, onDelete, onTogglePin, onBa
     if (cart[r.id] !== undefined) {
       // already in the cart — tapping again removes it directly, no prompt needed
       setCart(prev => { const next = { ...prev }; delete next[r.id]; return next; });
+    } else if (r.alwaysOne) {
+      setCart(prev => ({ ...prev, [r.id]: 1 }));
     } else {
       setQtyPromptFor(r);
     }
@@ -1461,7 +1550,7 @@ function MealPickerModal({ item, onClose, onPick }) {
 function EditRegularModal({ item, onClose, onSave }) {
   const [f, setF] = useState({ unit: 'pc', ...item });
   const num = (v) => parseFloat(v) || 0;
-  const submit = () => onSave({ name: f.name, protein: num(f.protein), carbs: num(f.carbs), fiber: num(f.fiber), fat: num(f.fat), calories: num(f.calories), restaurant: f.restaurant || null, unit: f.unit || 'pc' });
+  const submit = () => onSave({ name: f.name, protein: num(f.protein), carbs: num(f.carbs), fiber: num(f.fiber), fat: num(f.fat), calories: num(f.calories), restaurant: f.restaurant || null, unit: f.unit || 'pc', alwaysOne: !!f.alwaysOne });
   return (
     <Modal title="Edit Regular" onClose={onClose}>
       <Field label="Food name"><input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} /></Field>
@@ -1477,6 +1566,12 @@ function EditRegularModal({ item, onClose, onSave }) {
           <option value="serving">serving</option>
         </select>
       </Field>
+      <button onClick={() => setF({ ...f, alwaysOne: !f.alwaysOne })} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', padding: 0, marginBottom: 14 }}>
+        <div style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${f.alwaysOne ? BURGUNDY : '#C9C6D1'}`, background: f.alwaysOne ? BURGUNDY : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          {f.alwaysOne && <span style={{ color: WHITE, fontSize: 11, fontWeight: 700 }}>✓</span>}
+        </div>
+        <span style={{ fontSize: 13, color: TEXT }}>Always just 1 — skip the quantity popup, add directly</span>
+      </button>
       <Field label="Restaurant (optional, for grouping)"><input value={f.restaurant || ''} onChange={e => setF({ ...f, restaurant: e.target.value })} placeholder="e.g. Sonic" /></Field>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <Field label={`Protein (g) per ${f.unit || 'pc'}`}><input type="number" value={f.protein} onChange={e => setF({ ...f, protein: e.target.value })} /></Field>
@@ -1494,14 +1589,15 @@ function MealSection({ meal, foods, expanded, onToggleExpand, onAdd, onAiAdd, on
   const totals = foods.reduce((acc, f) => { const e = effective(f); return { protein: acc.protein + e.protein, netC: acc.netC + Math.max(0, e.carbs - e.fiber), calories: acc.calories + e.calories }; }, { protein: 0, netC: 0, calories: 0 });
   return (
     <div className="card">
-      <button onClick={onToggleExpand} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', background: 'none', border: 'none', textAlign: 'left', marginBottom: expanded ? 12 : 0 }}>
+      <button onClick={onToggleExpand} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', alignItems: 'center', width: '100%', background: 'none', border: 'none', textAlign: 'left', marginBottom: expanded ? 12 : 0, gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span>{meal.emoji}</span>
           <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 14, fontWeight: 600, color: TEXT }}>{meal.label}</span>
-          {!expanded && (
-            <span style={{ fontSize: 11.5, color: MUTED }}>{foods.length === 0 ? '— nothing logged' : `— ${foods.length} item${foods.length > 1 ? 's' : ''} · ${Math.round(totals.protein)}g P · ${Math.round(totals.calories)} cal`}</span>
-          )}
         </div>
+        {!expanded && (
+          <span style={{ fontSize: 11.5, color: MUTED, textAlign: 'center' }}>{foods.length === 0 ? 'nothing logged' : `${foods.length} item${foods.length > 1 ? 's' : ''} · ${Math.round(totals.protein)}g P · ${Math.round(totals.calories)} cal`}</span>
+        )}
+        {expanded && <span />}
         <span style={{ color: MUTED, fontSize: 12 }}>{expanded ? '▲' : '▼'}</span>
       </button>
 
@@ -1999,6 +2095,7 @@ function SettingsModal({ profile, onClose, onSave, onExport, onShowHome, onShowH
   const [t, setT] = useState(profile.targets);
   const [goalWeight, setGoalWeight] = useState(profile.goalWeight);
   const [showLevelPicker, setShowLevelPicker] = useState(false);
+  const [targetsExpanded, setTargetsExpanded] = useState(false);
   const num = (v) => parseFloat(v) || 0;
 
   const lastSyncRaw = (() => { try { return localStorage.getItem('kt-last-sync'); } catch (e) { return null; } })();
@@ -2033,17 +2130,21 @@ function SettingsModal({ profile, onClose, onSave, onExport, onShowHome, onShowH
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: BURGUNDY, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Daily Targets</div>
         <div style={{ display: 'flex', gap: 6 }}>
-          <button style={{ background: MANUAL_GRAY, border: 'none', borderRadius: 8, padding: '7px 12px', color: WHITE, fontSize: 12.5, fontWeight: 700 }}>Manual</button>
+          <button onClick={() => setTargetsExpanded(!targetsExpanded)} style={{ background: MANUAL_GRAY, border: 'none', borderRadius: 8, padding: '7px 12px', color: WHITE, fontSize: 12.5, fontWeight: 700 }}>Manual</button>
           <button onClick={() => setShowLevelPicker(true)} style={{ background: GRAY, border: 'none', borderRadius: 8, padding: '7px 12px', color: WHITE, fontSize: 12.5, fontWeight: 700 }}>Change Level</button>
         </div>
       </div>
-      <Field label="Protein Goal (g)"><input type="number" value={t.protein} onChange={e => setT({ ...t, protein: num(e.target.value) })} /></Field>
-      <Field label="Fat Goal (g)"><input type="number" value={t.fat} onChange={e => setT({ ...t, fat: num(e.target.value) })} /></Field>
-      <Field label="Net carb ceiling (g)"><input type="number" value={t.netCarbs} onChange={e => setT({ ...t, netCarbs: num(e.target.value) })} /></Field>
-      <Field label="Calorie ceiling"><input type="number" value={t.calories} onChange={e => setT({ ...t, calories: num(e.target.value) })} /></Field>
-      <Field label="Hydration Goal (oz)"><input type="number" value={t.water} onChange={e => setT({ ...t, water: num(e.target.value) })} /></Field>
-      <Field label="Goal weight (lbs)"><input type="number" value={goalWeight} onChange={e => setGoalWeight(num(e.target.value))} /></Field>
-      <PrimaryButton onClick={() => onSave({ ...profile, targets: t, goalWeight })} label="Save Targets" />
+      {targetsExpanded && (
+        <>
+          <Field label="Protein Goal (g)"><input type="number" value={t.protein} onChange={e => setT({ ...t, protein: num(e.target.value) })} /></Field>
+          <Field label="Fat Goal (g)"><input type="number" value={t.fat} onChange={e => setT({ ...t, fat: num(e.target.value) })} /></Field>
+          <Field label="Net carb ceiling (g)"><input type="number" value={t.netCarbs} onChange={e => setT({ ...t, netCarbs: num(e.target.value) })} /></Field>
+          <Field label="Calorie ceiling"><input type="number" value={t.calories} onChange={e => setT({ ...t, calories: num(e.target.value) })} /></Field>
+          <Field label="Hydration Goal (oz)"><input type="number" value={t.water} onChange={e => setT({ ...t, water: num(e.target.value) })} /></Field>
+          <Field label="Goal weight (lbs)"><input type="number" value={goalWeight} onChange={e => setGoalWeight(num(e.target.value))} /></Field>
+          <PrimaryButton onClick={() => onSave({ ...profile, targets: t, goalWeight })} label="Save Targets" />
+        </>
+      )}
 
       <div style={{ height: 1, background: BORDER, margin: '18px 0' }} />
       <button className="ghostbtn" onClick={onShowCoach} style={{ width: '100%', justifyContent: 'center', padding: 12, marginBottom: 10 }}>🧠 View Smart Coach Recap</button>
