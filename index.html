@@ -55,7 +55,7 @@ const MEALS = [
   { key: 'snacks', label: 'Snacks', emoji: '🍪' },
 ];
 
-const BUILD_NUMBER = 26;
+const BUILD_NUMBER = 27;
 const DEFAULT_TARGETS = { calories: 1800, protein: 90, netCarbs: 25, fat: 150, water: 100 };
 const LEVELS = [1, 2, 3].map((num, i) => {
   const carbs = [20, 50, 100][i];
@@ -334,6 +334,7 @@ function CarbTrack() {
   const [showMeasureHistory, setShowMeasureHistory] = useState(false);
   const [showSleepHistory, setShowSleepHistory] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showReconnect, setShowReconnect] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showHome, setShowHome] = useState(false);
   const [popup, setPopup] = useState(null);
@@ -591,11 +592,14 @@ function CarbTrack() {
     const todayKey = todayISO();
     let fired = null;
     Object.entries(goldCards).forEach(([cat, isGold]) => {
-      if (isGold && dismissed['goldCelebrated_' + cat] !== todayKey) fired = cat;
+      const sessionKey = 'kt-session-goldCelebrated_' + cat;
+      const alreadyThisSession = (() => { try { return sessionStorage.getItem(sessionKey) === todayKey; } catch (e) { return false; } })();
+      if (isGold && dismissed['goldCelebrated_' + cat] !== todayKey && !alreadyThisSession) fired = cat;
     });
     if (fired) {
       setConfettiFor(fired);
       persistDismissed({ ['goldCelebrated_' + fired]: todayKey });
+      try { sessionStorage.setItem('kt-session-goldCelebrated_' + fired, todayKey); } catch (e) {}
       setTimeout(() => setConfettiFor(null), 2600);
     }
   }, [goldCards.protein, goldCards.netCarbs, goldCards.calories, goldCards.fat, goldCards.hydration, goldCards.training]);
@@ -603,9 +607,11 @@ function CarbTrack() {
   // weight milestones are cumulative progress, not a daily streak — celebrate once per new 5lb milestone reached
   useEffect(() => {
     const lastCelebrated = dismissed.lastWeightMilestone || 0;
-    if (weightMilestoneLevel > lastCelebrated) {
+    const sessionCelebrated = (() => { try { return parseInt(sessionStorage.getItem('kt-session-lastWeightMilestone') || '0'); } catch (e) { return 0; } })();
+    if (weightMilestoneLevel > lastCelebrated && weightMilestoneLevel > sessionCelebrated) {
       setConfettiFor('weight');
       persistDismissed({ lastWeightMilestone: weightMilestoneLevel });
+      try { sessionStorage.setItem('kt-session-lastWeightMilestone', String(weightMilestoneLevel)); } catch (e) {}
       setTimeout(() => setConfettiFor(null), 2600);
     }
   }, [weightMilestoneLevel]);
@@ -662,8 +668,10 @@ function CarbTrack() {
     const today = new Date();
     const isSunday = today.getDay() === 0;
     const weekKey = todayISO();
-    if (isSunday && dismissed.coachShownWeek !== weekKey) {
+    const alreadyThisSession = (() => { try { return sessionStorage.getItem('kt-session-coachShownWeek') === weekKey; } catch (e) { return false; } })();
+    if (isSunday && dismissed.coachShownWeek !== weekKey && !alreadyThisSession) {
       persistDismissed({ coachShownWeek: weekKey });
+      try { sessionStorage.setItem('kt-session-coachShownWeek', weekKey); } catch (e) {}
       runSmartCoach();
     }
   }, [loaded, profile]);
@@ -698,7 +706,8 @@ function CarbTrack() {
   const loggedBpThisMonth = bpLog.some(b => monthKey(b.date) === monthKey(todayISO()));
   const showBpReminder = (dom === 1 || dom === 4) && !loggedBpThisMonth && dismissed.bp !== monthKey(todayISO());
 
-  const showInstallCard = dismissed.install !== true;
+  const isStandalone = (typeof window !== 'undefined') && (window.navigator.standalone === true || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches));
+  const showInstallCard = !isStandalone && dismissed.install !== true;
   const goalMet = latestWeight !== null && goalWeight !== null && latestWeight <= goalWeight;
   const showGoalMetPrompt = goalMet && dismissed.goalMet !== goalWeight;
 
@@ -728,14 +737,15 @@ function CarbTrack() {
   };
 
   if (!loaded) return <div style={{ background: GRAY, minHeight: '100vh' }} />;
+  if (showReconnect) return <PinReconnectScreen onBack={() => setShowReconnect(false)} />;
   if (!profile) return <ProfileSetup onDone={(p) => {
     save('kt-profile', p);
     setProfile(p);
     if (p.currentWeight) persistWeight([{ date: todayISO(), weight: p.currentWeight, note: '' }]);
     setPinStatus('need-setup'); // brand new profile — set up cloud protection right after
-  }} />;
+  }} onReconnect={() => setShowReconnect(true)} />;
 
-  if (pinStatus === 'need-setup') return <PinSetupScreen onDone={() => setPinStatus('unlocked')} />;
+  if (pinStatus === 'need-setup') return <PinSetupScreen onDone={() => setPinStatus('unlocked')} onReconnect={() => setShowReconnect(true)} />;
   if (pinStatus === 'need-verify') return <PinVerifyScreen onUnlocked={() => setPinStatus('unlocked')} />;
   if (pinStatus === 'checking') return <div style={{ background: GRAY, minHeight: '100vh' }} />;
 
@@ -987,12 +997,12 @@ function CarbTrack() {
       {showWorkoutAi && <WorkoutAiModal initialType={pendingTrainingType} onClose={() => { setShowWorkoutAi(false); setPendingTrainingType(null); }} onSave={(w) => { addWorkout(w); setShowWorkoutAi(false); setPendingTrainingType(null); }} />}
       {showSettings && <SettingsModal profile={profile} onClose={() => setShowSettings(false)} onSave={(p) => { save('kt-profile', p); setProfile(p); setShowSettings(false); }}
         onExport={exportCSV} onShowHome={() => { setShowSettings(false); setShowHome(true); }} onShowHistory={() => { setShowSettings(false); setShowHistory(true); }}
-        onShowCoach={() => { setShowSettings(false); runSmartCoach(); }} />}
+        onShowCoach={() => { setShowSettings(false); runSmartCoach(); }} onReconnect={() => { setShowSettings(false); setShowReconnect(true); }} />}
       {showHistory && <HistoryModal targets={targets} weightLog={weightLog} onClose={() => setShowHistory(false)} />}
       {showWeightHistory && <EntryHistoryModal title="Weight History" entries={weightLog} onClose={() => setShowWeightHistory(false)} renderRow={e => `${e.weight} lbs`} />}
       {showBpHistory && <EntryHistoryModal title="Blood Pressure History" entries={bpLog} onClose={() => setShowBpHistory(false)} renderRow={e => `${e.systolic}/${e.diastolic}${e.pulse ? ' · ♥' + e.pulse : ''}`} />}
       {showMeasureHistory && <EntryHistoryModal title="Measurements History" entries={measureLog} onClose={() => setShowMeasureHistory(false)} renderRow={e => [e.waist && `W:${e.waist}`, e.chest && `C:${e.chest}`, e.hips && `H:${e.hips}`, e.arms && `A:${e.arms}`, e.thighs && `T:${e.thighs}`].filter(Boolean).join(' ')} />}
-      {showSleepHistory && <EntryHistoryModal title="Sleep History" entries={sleepLog} onClose={() => setShowSleepHistory(false)} renderRow={e => `${e.hours} hrs · Q${e.quality}/5`} />}
+      {showSleepHistory && <EntryHistoryModal title="Sleep History" entries={sleepLog} onClose={() => setShowSleepHistory(false)} renderRow={e => `${e.hours} hrs · Q${e.quality}/5${e.bathroom ? ` · ${e.bathroom}x up` : ''}`} />}
       {showHome && <Modal title="Add to Home Screen" onClose={() => setShowHome(false)}><HomeScreenSteps /></Modal>}
       {popup && <MacroPopup data={popup} onClose={() => setPopup(null)} />}
       {confettiFor && <ConfettiOverlay />}
@@ -1001,7 +1011,7 @@ function CarbTrack() {
   );
 }
 
-function ProfileSetup({ onDone }) {
+function ProfileSetup({ onDone, onReconnect }) {
   const [f, setF] = useState({ name: '', age: '', height: '', currentWeight: '', goalWeight: '' });
   const [t, setT] = useState(DEFAULT_TARGETS);
   const [showForm, setShowForm] = useState(false);
@@ -1054,6 +1064,10 @@ function ProfileSetup({ onDone }) {
           <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: 10, padding: '12px 14px', fontSize: 11, color: '#D9D6DA', lineHeight: 1.5 }}>
             These are general starting points, not medical advice. Talk to a doctor before starting a very low-carb diet, especially if you have diabetes, kidney issues, or take medications affected by carb intake.
           </div>
+
+          {onReconnect && (
+            <button onClick={onReconnect} style={{ width: '100%', background: 'none', border: 'none', color: 'rgba(255,255,255,0.75)', fontSize: 12.5, marginTop: 16, padding: 8, textAlign: 'center' }}>Already have data on another device? Reconnect →</button>
+          )}
         </div>
       </div>
     );
@@ -1981,7 +1995,7 @@ function SleepModal({ initial, forDate, onClose, onSave }) {
   );
 }
 
-function SettingsModal({ profile, onClose, onSave, onExport, onShowHome, onShowHistory, onShowCoach }) {
+function SettingsModal({ profile, onClose, onSave, onExport, onShowHome, onShowHistory, onShowCoach, onReconnect }) {
   const [t, setT] = useState(profile.targets);
   const [goalWeight, setGoalWeight] = useState(profile.goalWeight);
   const [showLevelPicker, setShowLevelPicker] = useState(false);
@@ -2033,6 +2047,7 @@ function SettingsModal({ profile, onClose, onSave, onExport, onShowHome, onShowH
 
       <div style={{ height: 1, background: BORDER, margin: '18px 0' }} />
       <button className="ghostbtn" onClick={onShowCoach} style={{ width: '100%', justifyContent: 'center', padding: 12, marginBottom: 10 }}>🧠 View Smart Coach Recap</button>
+      <button className="ghostbtn" onClick={onReconnect} style={{ width: '100%', justifyContent: 'center', padding: 12, marginBottom: 10 }}>🔄 Reconnect to Existing Data</button>
       <button className="ghostbtn" onClick={onShowHistory} style={{ width: '100%', justifyContent: 'center', padding: 12, marginBottom: 10 }}>📊 View History Graphs</button>
       <button className="ghostbtn" onClick={onExport} style={{ width: '100%', justifyContent: 'center', padding: 12, marginBottom: 10 }}>⬇ Export Data (CSV)</button>
       <button className="ghostbtn" onClick={onShowHome} style={{ width: '100%', justifyContent: 'center', padding: 12 }}>📱 Add to Home Screen</button>
