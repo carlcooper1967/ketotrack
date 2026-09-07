@@ -12,15 +12,21 @@
   * { box-sizing: border-box; margin:0; padding:0; }
   body { font-family: 'Inter', sans-serif; }
   button { font-family: inherit; cursor: pointer; }
-  input, select, textarea { font-family: inherit; background: #FAFAFB; border: 1px solid #E9E7ED; color: #1F2024; border-radius: 8px; padding: 10px 11px; font-size: 14px; width: 100%; }
+  input, select, textarea { font-family: inherit; background: var(--input-bg); border: 1px solid var(--border-color); color: var(--text-color); border-radius: 8px; padding: 10px 11px; font-size: 14px; width: 100%; }
   input:focus, select:focus, textarea:focus { outline: none; border-color: #7A1F2B; }
   ::placeholder { color: #A6A3AD; }
-  .card { background: #FFFFFF; border: 1px solid #E9E7ED; border-radius: 14px; padding: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 14px; padding: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
   .pill { background: #7A1F2B; border: none; border-radius: 20px; padding: 7px 14px; color: #FFFFFF; display: flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; }
   .ghostbtn { background: #F6F1F2; border: 1px solid #E9E7ED; border-radius: 8px; padding: 7px 10px; color: #7A1F2B; display: flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; }
   .banner { background: #FDF2E9; border: 1px solid #F2D9BC; border-radius: 12px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
   .card { transition: background 2.2s ease, border-color 2.2s ease; }
   .gold-card { background: linear-gradient(135deg, #FFD700, #C9971A) !important; border-color: #8A6D1D !important; box-shadow: 0 0 0 1.5px #8A6D1D, 0 4px 12px rgba(138,109,29,0.4) !important; }
+
+  /* Night mode theme variables — light defaults, dark overrides */
+  :root { --card-bg: #FFFFFF; --text-color: #1F2024; --muted-color: #6B7280; --border-color: #E9E7ED; --track-bg: #F1EFF1; --input-bg: #FAFAFB; }
+  .dark-mode { --card-bg: #22262A; --text-color: #E8E6E3; --muted-color: #9CA3AF; --border-color: #3A3F44; --track-bg: #2E3338; --input-bg: #2E3338; }
+  .dark-mode .ghostbtn { background: var(--input-bg); }
+  .dark-mode .banner { background: var(--input-bg); }
   .confetti-piece { position: fixed; top: -20px; width: 8px; height: 14px; opacity: 0.9; z-index: 999; animation: confetti-fall linear forwards; }
   @keyframes confetti-fall {
     0% { transform: translateY(0) rotate(0deg); opacity: 1; }
@@ -40,12 +46,12 @@ const { useState, useEffect, useMemo, useRef } = React;
 const GRAY = '#1B5E3C';
 const BURGUNDY = '#3A3A3D';
 const WHITE = '#FFFFFF';
-const TEXT = '#1F2024';
-const MUTED = '#6B7280';
-const BORDER = '#E9E7ED';
+const TEXT = 'var(--text-color)';
+const MUTED = 'var(--muted-color)';
+const BORDER = 'var(--border-color)';
 const BLUE = '#2563EB';
 const RED = '#E11D2E';
-const TRACK_BG = '#F1EFF1';
+const TRACK_BG = 'var(--track-bg)';
 const MANUAL_GRAY = '#5F6368';
 
 const MEALS = [
@@ -55,7 +61,7 @@ const MEALS = [
   { key: 'snacks', label: 'Snacks', emoji: '🍪' },
 ];
 
-const BUILD_NUMBER = 28;
+const BUILD_NUMBER = 32;
 const DEFAULT_TARGETS = { calories: 1800, protein: 90, netCarbs: 25, fat: 150, water: 100 };
 const LEVELS = [1, 2, 3].map((num, i) => {
   const carbs = [20, 50, 100][i];
@@ -178,15 +184,16 @@ const effective = (f) => {
 // ---------- UI atoms ----------
 function HydrationCard({ water, target, onAdd, gold }) {
   const [val, setVal] = useState('');
+  const [mode, setMode] = useState('add'); // 'add' | 'subtract'
   const color = statColor(water, target, 'floor');
   const submit = () => {
     const n = parseFloat(val);
     if (!n || n === 0) return;
-    if (n > 33) {
+    if (mode === 'add' && n > 33) {
       const ok = window.confirm(`Add ${n}oz to Hydration? That's a lot for one entry — confirm this is right.`);
       if (!ok) return;
     }
-    onAdd(n);
+    onAdd(mode === 'subtract' ? -n : n);
     setVal('');
   };
   const chips = [8, 12, 16, 20];
@@ -196,9 +203,10 @@ function HydrationCard({ water, target, onAdd, gold }) {
         💧 Hydration{gold && <span style={{ fontSize: 10, color: '#8A6D1D', fontWeight: 700 }}>🔥 7-day streak</span>}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
-        <div style={{ display: 'flex', gap: 6, flex: '1 1 140px', minWidth: 140 }}>
-          <input type="number" inputMode="decimal" value={val} onChange={e => setVal(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} placeholder="oz" style={{ width: 70 }} />
-          <button onClick={submit} style={{ background: BURGUNDY, border: 'none', borderRadius: 9, padding: '10px 14px', color: WHITE, fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap' }}>+ Add</button>
+        <div style={{ display: 'flex', gap: 6, flex: '1 1 170px', minWidth: 170 }}>
+          <button onClick={() => setMode(mode === 'add' ? 'subtract' : 'add')} title={mode === 'add' ? 'Switch to subtract' : 'Switch to add'} style={{ width: 34, flexShrink: 0, background: mode === 'subtract' ? '#FBEAEA' : '#F6F1F2', border: `1.5px solid ${mode === 'subtract' ? RED : BORDER}`, borderRadius: 9, color: mode === 'subtract' ? RED : BURGUNDY, fontWeight: 700, fontSize: 16 }}>{mode === 'subtract' ? '−' : '+'}</button>
+          <input type="number" inputMode="decimal" value={val} onChange={e => setVal(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} placeholder="oz" style={{ width: 64 }} />
+          <button onClick={submit} style={{ background: mode === 'subtract' ? RED : BURGUNDY, border: 'none', borderRadius: 9, padding: '10px 12px', color: WHITE, fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap' }}>{mode === 'subtract' ? 'Subtract' : '+ Add'}</button>
         </div>
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 26, fontWeight: 700, color, lineHeight: 1, whiteSpace: 'nowrap' }}>{Math.round(water)}<span style={{ fontSize: 12, color: MUTED, fontWeight: 500 }}> oz</span></div>
@@ -248,10 +256,18 @@ function RowStat({ label, emoji, value, target, unit, kind, note, gold }) {
 }
 
 function Modal({ title, onClose, children }) {
+  const swipeStartY = useRef(null);
+  const onHeaderTouchStart = (e) => { swipeStartY.current = e.touches[0].clientY; };
+  const onHeaderTouchEnd = (e) => {
+    if (swipeStartY.current === null) return;
+    const dy = e.changedTouches[0].clientY - swipeStartY.current;
+    swipeStartY.current = null;
+    if (dy > 60) onClose();
+  };
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(30,10,20,0.5)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 50 }}>
-      <div style={{ background: WHITE, borderRadius: '16px 16px 0 0', padding: 22, width: '100%', maxWidth: 480, maxHeight: '88vh', overflowY: 'auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+      <div style={{ background: 'var(--card-bg)', borderRadius: '16px 16px 0 0', padding: 22, width: '100%', maxWidth: 480, maxHeight: '88vh', overflowY: 'auto' }}>
+        <div onTouchStart={onHeaderTouchStart} onTouchEnd={onHeaderTouchEnd} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
           <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700, color: BURGUNDY }}>{title}</span>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 20 }}>✕</button>
         </div>
@@ -306,7 +322,22 @@ function CarbTrack() {
   const [loaded, setLoaded] = useState(false);
   const [pinStatus, setPinStatus] = useState('checking'); // 'checking' | 'need-setup' | 'need-verify' | 'unlocked'
   const [selectedDate, setSelectedDate] = useState(todayISO());
+  const swipeStartX = useRef(null);
+  const handleSwipeStart = (e) => { swipeStartX.current = e.touches[0].clientX; };
+  const handleSwipeEnd = (e, onSwipeRight, onSwipeLeft) => {
+    if (swipeStartX.current === null) return;
+    const dx = e.changedTouches[0].clientX - swipeStartX.current;
+    swipeStartX.current = null;
+    if (Math.abs(dx) < 50) return; // ignore small taps/scrolls
+    if (dx > 0 && onSwipeRight) onSwipeRight();
+    else if (dx < 0 && onSwipeLeft) onSwipeLeft();
+  };
   const [weekAnchor, setWeekAnchor] = useState(todayISO());
+  const goToAdjacentDay = (delta) => {
+    const next = iso(addDays(new Date(selectedDate + 'T00:00:00'), delta));
+    setSelectedDate(next);
+    if (startOfWeek(next).getTime() !== startOfWeek(weekAnchor).getTime()) setWeekAnchor(next);
+  };
   const [dayData, setDayData] = useState(EMPTY_DAY);
   const [weightLog, setWeightLog] = useState([]);
   const [bpLog, setBpLog] = useState([]);
@@ -314,6 +345,7 @@ function CarbTrack() {
   const [sleepLog, setSleepLog] = useState([]);
   const [commonFoods, setCommonFoods] = useState([]);
   const [mealTemplates, setMealTemplates] = useState([]);
+  const [exerciseLibrary, setExerciseLibrary] = useState([]);
   const [dismissed, setDismissed] = useState({});
 
   const [addFoodMeal, setAddFoodMeal] = useState(null);
@@ -329,6 +361,12 @@ function CarbTrack() {
   const [showTrainingType, setShowTrainingType] = useState(false);
   const [pendingTrainingType, setPendingTrainingType] = useState(null);
   const [showTrainingMethod, setShowTrainingMethod] = useState(false);
+  const [showExercisePicker, setShowExercisePicker] = useState(false);
+  const [pendingExerciseName, setPendingExerciseName] = useState(null);
+  const [showSetEntry, setShowSetEntry] = useState(false);
+  const [exerciseHistoryFor, setExerciseHistoryFor] = useState(null);
+  const [pendingInitialSets, setPendingInitialSets] = useState(null);
+  const [prMessage, setPrMessage] = useState(null);
   const [showWeightHistory, setShowWeightHistory] = useState(false);
   const [showTrainingHistory, setShowTrainingHistory] = useState(false);
   const [showBpHistory, setShowBpHistory] = useState(false);
@@ -336,6 +374,8 @@ function CarbTrack() {
   const [showSleepHistory, setShowSleepHistory] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showReconnect, setShowReconnect] = useState(false);
+  const [nightModeSetting, setNightModeSetting] = useState('auto'); // 'auto' | 'light' | 'dark'
+  const [isDarkNow, setIsDarkNow] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showHome, setShowHome] = useState(false);
   const [popup, setPopup] = useState(null);
@@ -365,6 +405,15 @@ function CarbTrack() {
       setDismissed(load('kt-dismissed', {}));
       setExceptionDaysState(load('kt-exception-days', []));
       setMealTemplates(load('kt-meal-templates', []));
+      const existingLibrary = load('kt-exercise-library', null);
+      if (existingLibrary === null) {
+        const seeded = SEED_EXERCISES.map((name, i) => ({ id: Date.now() + i, name, count: 0, pinned: false }));
+        save('kt-exercise-library', seeded);
+        setExerciseLibrary(seeded);
+      } else {
+        setExerciseLibrary(existingLibrary);
+      }
+      setNightModeSetting(load('kt-night-mode', 'auto'));
       setLoaded(true);
 
       // PIN gate check — only meaningful once a profile exists (no point gating an empty first-run)
@@ -404,6 +453,28 @@ function CarbTrack() {
   };
   const persistCommon = (next) => { setCommonFoods(next); save('kt-common-foods', next); };
   const persistTemplates = (next) => { setMealTemplates(next); save('kt-meal-templates', next); };
+  const persistExerciseLibrary = (next) => { setExerciseLibrary(next); save('kt-exercise-library', next); };
+  const recordExerciseUse = (exerciseName) => {
+    const existing = exerciseLibrary.find(e => e.name.toLowerCase() === exerciseName.toLowerCase());
+    if (existing) {
+      persistExerciseLibrary(exerciseLibrary.map(e => e.id === existing.id ? { ...e, count: (e.count || 0) + 1 } : e));
+    } else {
+      persistExerciseLibrary([...exerciseLibrary, { id: Date.now() + Math.random(), name: exerciseName, count: 1, pinned: false }]);
+    }
+  };
+  const toggleExercisePin = (id) => persistExerciseLibrary(exerciseLibrary.map(e => e.id === id ? { ...e, pinned: !e.pinned } : e));
+  const deleteExercise = (id) => persistExerciseLibrary(exerciseLibrary.filter(e => e.id !== id));
+
+  const getExerciseHistory = (exerciseName) => {
+    const entries = [];
+    for (let i = 0; i <= 365; i++) {
+      const d = iso(addDays(new Date(), -i));
+      const parsed = load(DAY_KEY(d), null);
+      if (!parsed || !parsed.workouts) continue;
+      parsed.workouts.forEach(w => { if (w.exerciseName === exerciseName) entries.push({ ...w, date: d }); });
+    }
+    return entries;
+  };
   const persistDismissed = (partial) => {
     setDismissed(prev => {
       const next = { ...prev, ...partial };
@@ -477,10 +548,14 @@ function CarbTrack() {
   // one-time cleanup: strip leading quantities from names, merge items that match after normalization,
   // averaging their per-unit macros and combining frequency counts
   const cleanupFrequentFoods = () => {
-    const UNIT_WORDS = ['slice', 'slices', 'piece', 'pieces', 'pc', 'pcs', 'cup', 'cups', 'tbsp', 'tablespoon', 'tablespoons', 'tsp', 'teaspoon', 'teaspoons', 'oz', 'ounce', 'ounces', 'serving', 'servings', 'strip', 'strips', 'link', 'links'];
-    const SINGULAR = { slices: 'slice', pieces: 'piece', pcs: 'pc', cups: 'cup', tablespoons: 'tbsp', tablespoon: 'tbsp', teaspoons: 'tsp', teaspoon: 'tsp', ounces: 'oz', ounce: 'oz', servings: 'serving', strips: 'strip', links: 'link' };
-    const normalize = (name) => {
-      const trimmed = name.trim();
+    const UNIT_WORDS = ['slice', 'slices', 'piece', 'pieces', 'pc', 'pcs', 'cup', 'cups', 'tbsp', 'tbs', 'tablespoon', 'tablespoons', 'tsp', 'teaspoon', 'teaspoons', 'oz', 'ounce', 'ounces', 'serving', 'servings', 'strip', 'strips', 'link', 'links'];
+    const SINGULAR = { slices: 'slice', pieces: 'piece', pcs: 'pc', cups: 'cup', tbs: 'tbsp', tablespoons: 'tbsp', tablespoon: 'tbsp', teaspoons: 'tsp', teaspoon: 'tsp', ounces: 'oz', ounce: 'oz', servings: 'serving', strips: 'strip', links: 'link' };
+    // strip a trailing parenthetical quantity descriptor entirely — rename only, never used to divide macros,
+    // since some ("9 count") are true multipliers and others ("26g") are just a size descriptor of one item,
+    // and guessing wrong would silently corrupt someone's macro data
+    const stripParenthetical = (name) => name.replace(/\s*\([^)]*\)\s*$/, '').trim();
+    const normalize = (rawName) => {
+      const trimmed = stripParenthetical(rawName.trim());
       // compound pattern: "2 slices of bread" / "2 slices bread" — leading number, a known unit word, optional "of", then the food name
       const compound = trimmed.match(/^(\d+(?:\.\d+)?)\s+([a-zA-Z]+)\s+(?:of\s+)?(.*)$/i);
       if (compound && UNIT_WORDS.includes(compound[2].toLowerCase())) {
@@ -509,11 +584,15 @@ function CarbTrack() {
     let mergedCount = 0;
     Object.values(groups).forEach(items => {
       if (items.length === 1) {
-        // even a single unmatched item may still carry a detected unit worth applying (e.g. "2 slices of bread" alone)
         const original = commonFoods.find(cf => cf.id === items[0].id);
+        const nameChanged = items[0]._rest !== original.name;
         if (items[0]._unit && items[0]._qty > 1) {
+          // detected unit + a real multiplier — divide the macros down to per-unit
           merged.push({ ...original, name: items[0]._rest, unit: items[0]._unit,
             protein: original.protein / items[0]._qty, carbs: original.carbs / items[0]._qty, fiber: original.fiber / items[0]._qty, fat: original.fat / items[0]._qty, calories: original.calories / items[0]._qty });
+        } else if (nameChanged) {
+          // rename only (covers: plain leading number with no unit word, parenthetical strip, qty===1 with a detected unit) — macros untouched
+          merged.push({ ...original, name: items[0]._rest, unit: items[0]._unit || original.unit });
         } else {
           merged.push(original);
         }
@@ -643,6 +722,57 @@ function CarbTrack() {
       setTimeout(() => setConfettiFor(null), 2600);
     }
   }, [weightMilestoneLevel]);
+
+  // ---------- Night mode ----------
+  const persistNightMode = (val) => { setNightModeSetting(val); save('kt-night-mode', val); };
+
+  useEffect(() => {
+    if (!loaded) return;
+    if (nightModeSetting === 'light') { setIsDarkNow(false); return; }
+    if (nightModeSetting === 'dark') { setIsDarkNow(true); return; }
+
+    // auto: use cached sunrise/sunset for today if we have it, otherwise fetch (needs location permission)
+    const applyFromTimes = (sunriseISO, sunsetISO) => {
+      const now = Date.now();
+      const isDark = now < new Date(sunriseISO).getTime() || now > new Date(sunsetISO).getTime();
+      setIsDarkNow(isDark);
+    };
+
+    const cached = load('kt-daylight-cache', null);
+    const todayKey = todayISO();
+    if (cached && cached.date === todayKey) {
+      applyFromTimes(cached.sunrise, cached.sunset);
+      return;
+    }
+
+    if (!navigator.geolocation) return; // no geolocation support — leave in whatever mode it currently is
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const res = await fetch(`/api/daylight?lat=${pos.coords.latitude}&lng=${pos.coords.longitude}`);
+          const data = await res.json();
+          if (data.sunrise && data.sunset) {
+            save('kt-daylight-cache', { date: todayKey, sunrise: data.sunrise, sunset: data.sunset });
+            applyFromTimes(data.sunrise, data.sunset);
+          }
+        } catch (e) { /* offline or lookup failed — leave as-is */ }
+      },
+      () => { /* permission denied — leave as-is, user can still manually lock Light/Dark */ }
+    );
+  }, [loaded, nightModeSetting]);
+
+  // re-check every 15 minutes so the app updates live if it's kept open across sunset/sunrise
+  useEffect(() => {
+    if (nightModeSetting !== 'auto') return;
+    const interval = setInterval(() => {
+      const cached = load('kt-daylight-cache', null);
+      if (cached && cached.date === todayISO()) {
+        const now = Date.now();
+        setIsDarkNow(now < new Date(cached.sunrise).getTime() || now > new Date(cached.sunset).getTime());
+      }
+    }, 15 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [nightModeSetting]);
 
   // ---------- Smart Coach: weekly AI recap ----------
   const getAllTrainingHistory = () => {
@@ -819,7 +949,7 @@ function CarbTrack() {
   const regularsSorted = [...commonFoods].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || (b.count || 1) - (a.count || 1));
 
   return (
-    <div style={{ background: GRAY, minHeight: '100vh', fontFamily: "'Inter', sans-serif", color: TEXT, paddingBottom: 40 }}>
+    <div className={isDarkNow ? 'dark-mode' : ''} style={{ background: GRAY, minHeight: '100vh', fontFamily: "'Inter', sans-serif", color: TEXT, paddingBottom: 40 }}>
       <div style={{ background: BURGUNDY, padding: '22px 20px 18px' }}>
         <div style={{ maxWidth: 480, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -829,7 +959,8 @@ function CarbTrack() {
           <button onClick={() => setShowSettings(true)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 8, padding: '8px 10px', color: WHITE, fontSize: 15 }}>⚙</button>
         </div>
 
-        <div style={{ maxWidth: 480, margin: '18px auto 0', display: 'flex', alignItems: 'center', gap: 4 }}>
+        <div style={{ maxWidth: 480, margin: '18px auto 0', display: 'flex', alignItems: 'center', gap: 4 }}
+          onTouchStart={handleSwipeStart} onTouchEnd={(e) => handleSwipeEnd(e, () => goToAdjacentDay(-1), () => goToAdjacentDay(1))}>
           <button onClick={() => setWeekAnchor(iso(addDays(startOfWeek(weekAnchor), -7)))} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', padding: 2, fontSize: 16 }}>‹</button>
           <div style={{ flex: 1, display: 'flex', justifyContent: 'space-between' }}>
             {weekDays.map(d => {
@@ -1023,8 +1154,8 @@ function CarbTrack() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span>🏋</span>
                       <div>
-                        <div style={{ fontSize: 14, fontWeight: 500 }}>{w.type}</div>
-                        <div style={{ fontSize: 11.5, color: MUTED }}>{w.duration} min{w.distance ? ` · ${w.distance} mi` : ''}{pace ? ` · ${pace} min/mi` : ''}{w.avgSpeed ? ` · ${w.avgSpeed} mph` : ''}{w.cadence ? ` · ${w.cadence} rpm` : ''}{w.weightLifted ? ` · ${w.weightLifted} lbs` : ''}{w.reps ? ` × ${w.reps} reps` : ''}{w.activeCalories ? ` · ${w.activeCalories} cal` : ''}{w.avgHeartRate ? ` · ${w.avgHeartRate} bpm avg` : ''}</div>
+                        <div style={{ fontSize: 14, fontWeight: 500 }}>{w.exerciseName || w.type}</div>
+                        <div style={{ fontSize: 11.5, color: MUTED }}>{w.sets ? w.sets.map(s => `${s.weight}×${s.reps}`).join(', ') : ''}{w.duration ? ` · ${w.duration} min` : ''}{w.distance ? ` · ${w.distance} mi` : ''}{pace ? ` · ${pace} min/mi` : ''}{w.avgSpeed ? ` · ${w.avgSpeed} mph` : ''}{w.cadence ? ` · ${w.cadence} rpm` : ''}{!w.sets && w.weightLifted ? ` · ${w.weightLifted} lbs` : ''}{!w.sets && w.reps ? ` × ${w.reps} reps` : ''}{w.activeCalories ? ` · ${w.activeCalories} cal` : ''}{w.avgHeartRate ? ` · ${w.avgHeartRate} bpm avg` : ''}</div>
                         {w.notes && <div style={{ fontSize: 11.5, color: MUTED }}>{w.notes}</div>}
                       </div>
                     </div>
@@ -1053,7 +1184,7 @@ function CarbTrack() {
       {pickMealFor && <MealPickerModal item={pickMealFor} onClose={() => setPickMealFor(null)} onPick={(mealKey) => logRegularsToMeal(pickMealFor, mealKey)} />}
       {showTrainingHistory && (
         <EntryHistoryModal title="Training History" entries={getAllTrainingHistory()} onClose={() => setShowTrainingHistory(false)}
-          renderRow={w => `${w.type} · ${w.duration}min${w.distance ? ` · ${w.distance}mi` : ''}${w.weightLifted ? ` · ${w.weightLifted}lbs×${w.reps || '?'}` : ''}${w.activeCalories ? ` · ${w.activeCalories}cal` : ''}`} />
+          renderRow={w => `${w.exerciseName || w.type}${w.sets ? ' · ' + w.sets.map(s => `${s.weight}×${s.reps}`).join(', ') : ''}${w.duration ? ` · ${w.duration}min` : ''}${!w.sets && w.weightLifted ? ` · ${w.weightLifted}lbs×${w.reps || '?'}` : ''}${w.activeCalories ? ` · ${w.activeCalories}cal` : ''}`} />
       )}
       {showTemplates && (
         <Modal title="📋 Meal Templates" onClose={() => setShowTemplates(false)}>
@@ -1074,7 +1205,36 @@ function CarbTrack() {
         onSave={(updates) => { updateRegular(editRegular.id, updates); setEditRegular(null); }} />}
       {showTrainingType && <TrainingTypeModal onClose={() => setShowTrainingType(false)} onPick={(type) => { setPendingTrainingType(type); setShowTrainingType(false); setShowTrainingMethod(true); }} />}
       {showTrainingMethod && <TrainingMethodModal type={pendingTrainingType} onClose={() => { setShowTrainingMethod(false); setPendingTrainingType(null); }}
-        onPick={(method) => { setShowTrainingMethod(false); if (method === 'manual') setShowAddWorkout(true); else setShowWorkoutAi(true); }} />}
+        onPick={(method) => { setShowTrainingMethod(false); if (method === 'manual') { if (pendingTrainingType === 'Strength') setShowExercisePicker(true); else setShowAddWorkout(true); } else setShowWorkoutAi(true); }} />}
+      {showExercisePicker && (
+        <ExercisePickerModal exercises={exerciseLibrary} onClose={() => { setShowExercisePicker(false); setPendingTrainingType(null); }}
+          onPick={(name) => {
+            const history = getExerciseHistory(name);
+            setPendingInitialSets(history.length > 0 ? history[0].sets : null);
+            setPendingExerciseName(name); setShowExercisePicker(false); setShowSetEntry(true);
+          }}
+          onTogglePin={toggleExercisePin} onDelete={deleteExercise} onViewHistory={(name) => setExerciseHistoryFor(name)} />
+      )}
+      {showSetEntry && (
+        <SetEntryModal exerciseName={pendingExerciseName} profileWeight={profile.currentWeight} initialSets={pendingInitialSets} history={getExerciseHistory(pendingExerciseName || '')}
+          onClose={() => { setShowSetEntry(false); setPendingExerciseName(null); setPendingInitialSets(null); setPendingTrainingType(null); }}
+          onSave={(w) => {
+            const priorHistory = getExerciseHistory(pendingExerciseName);
+            const priorMax = priorHistory.length > 0 ? Math.max(...priorHistory.flatMap(h => (h.sets || []).map(s => s.weight))) : null;
+            const newMax = Math.max(...w.sets.map(s => s.weight));
+            addWorkout(w); recordExerciseUse(pendingExerciseName);
+            if (priorMax !== null && newMax > priorMax) {
+              setPrMessage(`🎉 New PR on ${pendingExerciseName}! ${newMax} lbs`);
+              setConfettiFor('exercisePR');
+              setTimeout(() => { setConfettiFor(null); setPrMessage(null); }, 3200);
+            }
+            setShowSetEntry(false); setPendingExerciseName(null); setPendingInitialSets(null); setPendingTrainingType(null);
+          }} />
+      )}
+      {exerciseHistoryFor && (
+        <EntryHistoryModal title={`${exerciseHistoryFor} History`} entries={getExerciseHistory(exerciseHistoryFor)} onClose={() => setExerciseHistoryFor(null)}
+          renderRow={w => (w.sets || []).map(s => `${s.weight}×${s.reps}`).join(', ')} />
+      )}
       {showAddWorkout && <WorkoutModal initialType={pendingTrainingType} profileWeight={profile.currentWeight} onClose={() => { setShowAddWorkout(false); setPendingTrainingType(null); }} onSave={(w) => { addWorkout(w); setShowAddWorkout(false); setPendingTrainingType(null); }} />}
       {showWeightForm && <WeightModal onClose={() => setShowWeightForm(false)} onSave={(entry) => { persistWeight([...weightLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowWeightForm(false); }} />}
       {showBpForm && <BpModal onClose={() => setShowBpForm(false)} onSave={(entry) => { persistBp([...bpLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowBpForm(false); }} />}
@@ -1084,7 +1244,8 @@ function CarbTrack() {
       {showWorkoutAi && <WorkoutAiModal initialType={pendingTrainingType} onClose={() => { setShowWorkoutAi(false); setPendingTrainingType(null); }} onSave={(w) => { addWorkout(w); setShowWorkoutAi(false); setPendingTrainingType(null); }} />}
       {showSettings && <SettingsModal profile={profile} onClose={() => setShowSettings(false)} onSave={(p) => { save('kt-profile', p); setProfile(p); setShowSettings(false); }}
         onExport={exportCSV} onShowHome={() => { setShowSettings(false); setShowHome(true); }} onShowHistory={() => { setShowSettings(false); setShowHistory(true); }}
-        onShowCoach={() => { setShowSettings(false); runSmartCoach(); }} onReconnect={() => { setShowSettings(false); setShowReconnect(true); }} />}
+        onShowCoach={() => { setShowSettings(false); runSmartCoach(); }} onReconnect={() => { setShowSettings(false); setShowReconnect(true); }}
+        nightModeSetting={nightModeSetting} onSetNightMode={persistNightMode} />}
       {showHistory && <HistoryModal targets={targets} weightLog={weightLog} onClose={() => setShowHistory(false)} />}
       {showWeightHistory && <EntryHistoryModal title="Weight History" entries={weightLog} onClose={() => setShowWeightHistory(false)} renderRow={e => `${e.weight} lbs`} />}
       {showBpHistory && <EntryHistoryModal title="Blood Pressure History" entries={bpLog} onClose={() => setShowBpHistory(false)} renderRow={e => `${e.systolic}/${e.diastolic}${e.pulse ? ' · ♥' + e.pulse : ''}`} />}
@@ -1093,6 +1254,9 @@ function CarbTrack() {
       {showHome && <Modal title="Add to Home Screen" onClose={() => setShowHome(false)}><HomeScreenSteps /></Modal>}
       {popup && <MacroPopup data={popup} onClose={() => setPopup(null)} />}
       {confettiFor && <ConfettiOverlay />}
+      {prMessage && (
+        <div style={{ position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)', background: '#FFF7E0', border: '1.5px solid #E8C55A', borderRadius: 12, padding: '12px 20px', fontWeight: 700, fontSize: 14, color: '#8A6D1D', zIndex: 999, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>{prMessage}</div>
+      )}
       {showCoach && <SmartCoachModal loading={coachLoading} text={coachText} error={coachError} onClose={() => setShowCoach(false)} onRetry={runSmartCoach} />}
     </div>
   );
@@ -1589,7 +1753,7 @@ function MealSection({ meal, foods, expanded, onToggleExpand, onAdd, onAiAdd, on
   const totals = foods.reduce((acc, f) => { const e = effective(f); return { protein: acc.protein + e.protein, netC: acc.netC + Math.max(0, e.carbs - e.fiber), calories: acc.calories + e.calories }; }, { protein: 0, netC: 0, calories: 0 });
   return (
     <div className="card">
-      <button onClick={onToggleExpand} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', alignItems: 'center', width: '100%', background: 'none', border: 'none', textAlign: 'left', marginBottom: expanded ? 12 : 0, gap: 8 }}>
+      <button onClick={onToggleExpand} style={{ display: 'grid', gridTemplateColumns: '105px 1fr auto', alignItems: 'center', width: '100%', background: 'none', border: 'none', textAlign: 'left', marginBottom: expanded ? 12 : 0, gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span>{meal.emoji}</span>
           <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 14, fontWeight: 600, color: TEXT }}>{meal.label}</span>
@@ -1856,6 +2020,14 @@ const TRAINING_TYPES = [
   { key: 'Mixed', emoji: '🔀' },
 ];
 
+const SEED_EXERCISES = [
+  'Push-ups', 'Sit-ups', 'Crunches', 'Squats', 'Lunges', 'Planks', 'Pull-ups', 'Chin-ups', 'Dips', 'Burpees',
+  'Bench Press', 'Incline Bench Press', 'Overhead Press', 'Dumbbell Bench Press', 'Dumbbell Shoulder Press', 'Tricep Extensions', 'Tricep Pushdowns',
+  'Deadlift', 'Barbell Row', 'Dumbbell Row', 'Lat Pulldown', 'Bicep Curls', 'Hammer Curls', 'Face Pulls',
+  'Back Squat', 'Front Squat', 'Leg Press', 'Romanian Deadlift', 'Leg Curls', 'Leg Extensions', 'Calf Raises', 'Hip Thrusts',
+  'Russian Twists', 'Leg Raises', 'Mountain Climbers', 'Kettlebell Swings', "Farmer's Carry",
+];
+
 function TrainingTypeModal({ onClose, onPick }) {
   return (
     <Modal title="What kind of training?" onClose={onClose}>
@@ -1866,6 +2038,110 @@ function TrainingTypeModal({ onClose, onPick }) {
           </button>
         ))}
       </div>
+    </Modal>
+  );
+}
+
+function ExercisePickerModal({ exercises, onClose, onPick, onTogglePin, onDelete, onViewHistory }) {
+  const [customName, setCustomName] = useState('');
+  const sorted = [...exercises].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || (b.count || 0) - (a.count || 0));
+  const addCustom = () => { const name = customName.trim(); if (!name) return; onPick(name); setCustomName(''); };
+  return (
+    <Modal title="🏋️ Pick an Exercise" onClose={onClose}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+        <input value={customName} onChange={e => setCustomName(e.target.value)} placeholder="Add a new exercise…" onKeyDown={e => e.key === 'Enter' && addCustom()} />
+        <button onClick={addCustom} style={{ background: BURGUNDY, border: 'none', borderRadius: 9, padding: '10px 16px', color: WHITE, fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap' }}>Add</button>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: '50vh', overflowY: 'auto' }}>
+        {sorted.map(e => (
+          <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 0', borderBottom: `1px solid ${BORDER}` }}>
+            <button onClick={() => onPick(e.name)} style={{ background: 'none', border: 'none', textAlign: 'left', flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 5 }}>
+                {e.pinned && <span style={{ fontSize: 11 }}>📌</span>}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span>
+              </div>
+              {e.count > 0 && <div style={{ fontSize: 11, color: MUTED }}>Logged {e.count}×</div>}
+            </button>
+            <button onClick={() => onViewHistory(e.name)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 11 }}>History</button>
+            <button onClick={() => onTogglePin(e.id)} style={{ background: 'none', border: 'none', color: e.pinned ? BURGUNDY : '#C9C6D1', fontSize: 15 }}>📌</button>
+            <button onClick={() => onDelete(e.id)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 15 }}>✕</button>
+          </div>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
+function SetEntryModal({ exerciseName, profileWeight, initialSets, history, onClose, onSave }) {
+  const [sets, setSets] = useState(initialSets ? initialSets.map(s => ({ ...s })) : []);
+  const [weight, setWeight] = useState('');
+  const [reps, setReps] = useState('');
+  const [duration, setDuration] = useState('');
+  const [activeCalories, setActiveCalories] = useState('');
+  const [avgHeartRate, setAvgHeartRate] = useState('');
+  const [notes, setNotes] = useState('');
+  const [suggestion, setSuggestion] = useState(null);
+  const [suggestionLoading, setSuggestionLoading] = useState(true);
+  const num = (v) => parseFloat(v) || 0;
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/suggest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ exerciseName, history: history || [] }) });
+        const data = await res.json();
+        if (data.suggestion) setSuggestion(data.suggestion);
+      } catch (e) { /* offline or failed — just skip the suggestion, don't block logging */ }
+      setSuggestionLoading(false);
+    })();
+  }, []);
+
+  const addSet = () => {
+    if (!weight || !reps) return;
+    setSets([...sets, { weight: num(weight), reps: num(reps) }]);
+  };
+  const removeSet = (i) => setSets(sets.filter((_, idx) => idx !== i));
+
+  const submit = () => {
+    if (sets.length === 0 || !duration) return;
+    let calories = num(activeCalories) || null;
+    if (!calories && profileWeight) {
+      const kg = profileWeight * 0.4536;
+      calories = Math.round(6 * kg * (num(duration) / 60)); // MET 6 (vigorous lifting), same formula as before
+    }
+    onSave({ type: 'Strength', exerciseName, sets, duration: num(duration), activeCalories: calories, avgHeartRate: num(avgHeartRate) || null, notes });
+  };
+
+  return (
+    <Modal title={exerciseName} onClose={onClose}>
+      {suggestionLoading && <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 14, fontStyle: 'italic' }}>Thinking of a suggestion…</div>}
+      {suggestion && !suggestionLoading && (
+        <div style={{ background: '#EAF1FB', border: '1px solid #C7D9F5', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#1D4ED8' }}>💡 {suggestion}</div>
+      )}
+      <div style={{ fontSize: 12, fontWeight: 600, color: BURGUNDY, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>Sets</div>
+      {initialSets && initialSets.length > 0 && sets.length === initialSets.length && <div style={{ fontSize: 11.5, color: MUTED, marginBottom: 8, marginTop: -4 }}>Pre-filled from last time — edit or clear as needed</div>}
+      {sets.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
+          {sets.map((s, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F6F1F2', borderRadius: 8, padding: '8px 12px' }}>
+              <span style={{ fontSize: 13.5, fontWeight: 600 }}>Set {i + 1}: {s.weight}lbs × {s.reps} reps</span>
+              <button onClick={() => removeSet(i)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 14 }}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+        <input type="number" inputMode="decimal" value={weight} onChange={e => setWeight(e.target.value)} placeholder="lbs" style={{ flex: 1 }} />
+        <input type="number" value={reps} onChange={e => setReps(e.target.value)} placeholder="reps" style={{ flex: 1 }} />
+        <button onClick={addSet} style={{ background: GRAY, border: 'none', borderRadius: 9, padding: '10px 16px', color: WHITE, fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap' }}>+ Set</button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <Field label="Duration (min)"><input type="number" value={duration} onChange={e => setDuration(e.target.value)} /></Field>
+        <Field label="Active calories burned"><input type="number" value={activeCalories} onChange={e => setActiveCalories(e.target.value)} placeholder="blank = auto-estimate" /></Field>
+        <Field label="Avg heart rate (bpm)"><input type="number" value={avgHeartRate} onChange={e => setAvgHeartRate(e.target.value)} placeholder="from Apple Watch" /></Field>
+      </div>
+      <Field label="Notes (optional)"><input value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g. felt strong" /></Field>
+      <PrimaryButton onClick={submit} label={`Save ${exerciseName}`} />
     </Modal>
   );
 }
@@ -2091,7 +2367,7 @@ function SleepModal({ initial, forDate, onClose, onSave }) {
   );
 }
 
-function SettingsModal({ profile, onClose, onSave, onExport, onShowHome, onShowHistory, onShowCoach, onReconnect }) {
+function SettingsModal({ profile, onClose, onSave, onExport, onShowHome, onShowHistory, onShowCoach, onReconnect, nightModeSetting, onSetNightMode }) {
   const [t, setT] = useState(profile.targets);
   const [goalWeight, setGoalWeight] = useState(profile.goalWeight);
   const [showLevelPicker, setShowLevelPicker] = useState(false);
@@ -2125,6 +2401,13 @@ function SettingsModal({ profile, onClose, onSave, onExport, onShowHome, onShowH
         <div style={{ fontSize: 11.5, color: MUTED, marginBottom: 6 }}>Suggestions, questions, or comments welcome:</div>
         <div style={{ fontSize: 11.5, color: TEXT }}>817-454-7267</div>
         <div style={{ fontSize: 11.5, color: TEXT }}>carlcooper@lynchlegacyexp.com</div>
+      </div>
+
+      <div style={{ fontSize: 12, fontWeight: 600, color: BURGUNDY, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>Night Mode</div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 18 }}>
+        {['auto', 'light', 'dark'].map(opt => (
+          <button key={opt} onClick={() => onSetNightMode(opt)} style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: `1.5px solid ${nightModeSetting === opt ? BURGUNDY : BORDER}`, background: nightModeSetting === opt ? BURGUNDY : 'transparent', color: nightModeSetting === opt ? WHITE : TEXT, fontWeight: 600, fontSize: 12.5, textTransform: 'capitalize' }}>{opt}</button>
+        ))}
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
