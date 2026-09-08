@@ -23,8 +23,8 @@
   .gold-card { background: linear-gradient(135deg, #FFD700, #C9971A) !important; border-color: #8A6D1D !important; box-shadow: 0 0 0 1.5px #8A6D1D, 0 4px 12px rgba(138,109,29,0.4) !important; }
 
   /* Night mode theme variables — light defaults, dark overrides */
-  :root { --card-bg: #FFFFFF; --text-color: #1F2024; --muted-color: #6B7280; --border-color: #E9E7ED; --track-bg: #F1EFF1; --input-bg: #FAFAFB; }
-  .dark-mode { --card-bg: #22262A; --text-color: #E8E6E3; --muted-color: #9CA3AF; --border-color: #3A3F44; --track-bg: #2E3338; --input-bg: #2E3338; }
+  :root { --card-bg: #FFFFFF; --text-color: #1F2024; --muted-color: #6B7280; --border-color: #E9E7ED; --track-bg: #F1EFF1; --input-bg: #FAFAFB; --label-color: #3A3A3D; }
+  .dark-mode { --card-bg: #22262A; --text-color: #E8E6E3; --muted-color: #9CA3AF; --border-color: #3A3F44; --track-bg: #2E3338; --input-bg: #2E3338; --label-color: #D9D6DA; }
   .dark-mode .ghostbtn { background: var(--input-bg); }
   .dark-mode .banner { background: var(--input-bg); }
   .confetti-piece { position: fixed; top: -20px; width: 8px; height: 14px; opacity: 0.9; z-index: 999; animation: confetti-fall linear forwards; }
@@ -45,6 +45,7 @@ const { useState, useEffect, useMemo, useRef } = React;
 // ---------- Tokens ----------
 const GRAY = '#1B5E3C';
 const BURGUNDY = '#3A3A3D';
+const LABEL = 'var(--label-color)'; // for card section labels (text), which need to flip in Night Mode — BURGUNDY itself stays literal for its button-background uses
 const WHITE = '#FFFFFF';
 const TEXT = 'var(--text-color)';
 const MUTED = 'var(--muted-color)';
@@ -61,7 +62,7 @@ const MEALS = [
   { key: 'snacks', label: 'Snacks', emoji: '🍪' },
 ];
 
-const BUILD_NUMBER = 32;
+const BUILD_NUMBER = 34;
 const DEFAULT_TARGETS = { calories: 1800, protein: 90, netCarbs: 25, fat: 150, water: 100 };
 const LEVELS = [1, 2, 3].map((num, i) => {
   const carbs = [20, 50, 100][i];
@@ -199,7 +200,7 @@ function HydrationCard({ water, target, onAdd, gold }) {
   const chips = [8, 12, 16, 20];
   return (
     <div className={gold ? 'card gold-card' : 'card'} style={{ padding: 14 }}>
-      <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 12, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 12, letterSpacing: '0.05em', textTransform: 'uppercase', color: LABEL, fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
         💧 Hydration{gold && <span style={{ fontSize: 10, color: '#8A6D1D', fontWeight: 700 }}>🔥 7-day streak</span>}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
@@ -214,7 +215,7 @@ function HydrationCard({ water, target, onAdd, gold }) {
         </div>
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
-        {chips.map(c => <button key={c} onClick={() => onAdd(c)} style={{ flex: 1, background: '#F6F1F2', border: `1px solid ${BORDER}`, borderRadius: 8, padding: '9px 0', fontSize: 12.5, fontWeight: 600, color: BURGUNDY }}>+{c}</button>)}
+        {chips.map(c => <button key={c} onClick={() => onAdd(c)} style={{ flex: 1, background: '#F6F1F2', border: `1px solid ${BORDER}`, borderRadius: 8, padding: '9px 0', fontSize: 12.5, fontWeight: 600, color: LABEL }}>+{c}</button>)}
       </div>
     </div>
   );
@@ -242,7 +243,7 @@ function RowStat({ label, emoji, value, target, unit, kind, note, gold }) {
     <div className={gold ? 'card gold-card' : 'card'} style={{ border: `1px solid ${BORDER}`, borderRadius: 12, padding: '10px 8px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', flex: 1, minWidth: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6 }}>
         <span style={{ fontSize: 11 }}>{emoji}</span>
-        <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 8.5, letterSpacing: '0.03em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
+        <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 8.5, letterSpacing: '0.03em', textTransform: 'uppercase', color: LABEL, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
         {gold && <span style={{ fontSize: 8, color: '#8A6D1D', fontWeight: 700, marginLeft: 'auto' }}>🔥7d</span>}
       </div>
       <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 19, fontWeight: 700, color, lineHeight: 1 }}>{Math.round(value)}<span style={{ fontSize: 10, color: MUTED, fontWeight: 500 }}>{unit}</span></div>
@@ -257,18 +258,24 @@ function RowStat({ label, emoji, value, target, unit, kind, note, gold }) {
 
 function Modal({ title, onClose, children }) {
   const swipeStartY = useRef(null);
-  const onHeaderTouchStart = (e) => { swipeStartY.current = e.touches[0].clientY; };
-  const onHeaderTouchEnd = (e) => {
+  const sheetRef = useRef(null);
+  const onSheetTouchStart = (e) => {
+    // only arm the close-swipe if already at the top of the content — otherwise this is just normal scrolling
+    if (sheetRef.current && sheetRef.current.scrollTop <= 0) swipeStartY.current = e.touches[0].clientY;
+    else swipeStartY.current = null;
+  };
+  const onSheetTouchEnd = (e) => {
     if (swipeStartY.current === null) return;
     const dy = e.changedTouches[0].clientY - swipeStartY.current;
     swipeStartY.current = null;
     if (dy > 60) onClose();
   };
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(30,10,20,0.5)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 50 }}>
-      <div style={{ background: 'var(--card-bg)', borderRadius: '16px 16px 0 0', padding: 22, width: '100%', maxWidth: 480, maxHeight: '88vh', overflowY: 'auto' }}>
-        <div onTouchStart={onHeaderTouchStart} onTouchEnd={onHeaderTouchEnd} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
-          <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700, color: BURGUNDY }}>{title}</span>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(30,10,20,0.5)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 50 }}
+      onTouchStart={(e) => e.stopPropagation()} onTouchEnd={(e) => e.stopPropagation()}>
+      <div ref={sheetRef} onTouchStart={onSheetTouchStart} onTouchEnd={onSheetTouchEnd} style={{ background: 'var(--card-bg)', borderRadius: '16px 16px 0 0', padding: 22, width: '100%', maxWidth: 480, maxHeight: '88vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+          <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700, color: LABEL }}>{title}</span>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 20 }}>✕</button>
         </div>
         {children}
@@ -297,7 +304,7 @@ function HomeScreenSteps() {
   return (
     <div>
       <div style={{ marginBottom: 16 }}>
-        <div style={{ fontFamily: "'Oswald', sans-serif", fontWeight: 600, fontSize: 13, color: BURGUNDY, marginBottom: 8 }}>iPhone (Safari)</div>
+        <div style={{ fontFamily: "'Oswald', sans-serif", fontWeight: 600, fontSize: 13, color: LABEL, marginBottom: 8 }}>iPhone (Safari)</div>
         <ol style={{ fontSize: 13, color: TEXT, paddingLeft: 18, lineHeight: 1.8 }}>
           <li>Tap the Share icon at the bottom of the screen</li>
           <li>Scroll down and tap "Add to Home Screen"</li>
@@ -305,7 +312,7 @@ function HomeScreenSteps() {
         </ol>
       </div>
       <div>
-        <div style={{ fontFamily: "'Oswald', sans-serif", fontWeight: 600, fontSize: 13, color: BURGUNDY, marginBottom: 8 }}>Android (Chrome)</div>
+        <div style={{ fontFamily: "'Oswald', sans-serif", fontWeight: 600, fontSize: 13, color: LABEL, marginBottom: 8 }}>Android (Chrome)</div>
         <ol style={{ fontSize: 13, color: TEXT, paddingLeft: 18, lineHeight: 1.8 }}>
           <li>Tap the ⋮ menu in the top right</li>
           <li>Tap "Add to Home Screen"</li>
@@ -692,6 +699,16 @@ function CarbTrack() {
   }), [streaks]);
 
   const weightMilestoneLevel = (startWeight && latestWeight) ? Math.floor(Math.max(0, startWeight - latestWeight) / 5) : 0;
+
+  // shared personal context passed to any live coaching suggestion (exercise-specific or by training type)
+  const buildProfileContext = () => ({
+    age: profile.age || null,
+    currentWeight: latestWeight || profile.currentWeight || null,
+    weightTrend: (startWeight && latestWeight) ? Math.round((startWeight - latestWeight) * 10) / 10 : null,
+    goalWeight: profile.goalWeight || null,
+    latestBp: bpLog.length > 0 ? bpLog[bpLog.length - 1] : null,
+    targets,
+  });
   const weightGold = weightMilestoneLevel >= 1;
 
   // trigger confetti once per calendar day, the day a category first reaches a 7+ streak
@@ -782,6 +799,17 @@ function CarbTrack() {
       const parsed = load(DAY_KEY(d), null);
       if (!parsed || !parsed.workouts || parsed.workouts.length === 0) continue;
       parsed.workouts.forEach(w => entries.push({ ...w, date: d }));
+    }
+    return entries;
+  };
+
+  const getTrainingTypeHistory = (type, limit = 10) => {
+    const entries = [];
+    for (let i = 1; i <= 90 && entries.length < limit; i++) { // start at 1 (yesterday) — today's session, if any, isn't "history" yet
+      const d = iso(addDays(new Date(), -i));
+      const parsed = load(DAY_KEY(d), null);
+      if (!parsed || !parsed.workouts) continue;
+      parsed.workouts.filter(w => w.type === type).forEach(w => entries.push({ ...w, date: d }));
     }
     return entries;
   };
@@ -949,7 +977,8 @@ function CarbTrack() {
   const regularsSorted = [...commonFoods].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || (b.count || 1) - (a.count || 1));
 
   return (
-    <div className={isDarkNow ? 'dark-mode' : ''} style={{ background: GRAY, minHeight: '100vh', fontFamily: "'Inter', sans-serif", color: TEXT, paddingBottom: 40 }}>
+    <div className={isDarkNow ? 'dark-mode' : ''} style={{ background: GRAY, minHeight: '100vh', fontFamily: "'Inter', sans-serif", color: TEXT, paddingBottom: 40 }}
+      onTouchStart={handleSwipeStart} onTouchEnd={(e) => handleSwipeEnd(e, () => goToAdjacentDay(-1), () => goToAdjacentDay(1))}>
       <div style={{ background: BURGUNDY, padding: '22px 20px 18px' }}>
         <div style={{ maxWidth: 480, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -959,8 +988,7 @@ function CarbTrack() {
           <button onClick={() => setShowSettings(true)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 8, padding: '8px 10px', color: WHITE, fontSize: 15 }}>⚙</button>
         </div>
 
-        <div style={{ maxWidth: 480, margin: '18px auto 0', display: 'flex', alignItems: 'center', gap: 4 }}
-          onTouchStart={handleSwipeStart} onTouchEnd={(e) => handleSwipeEnd(e, () => goToAdjacentDay(-1), () => goToAdjacentDay(1))}>
+        <div style={{ maxWidth: 480, margin: '18px auto 0', display: 'flex', alignItems: 'center', gap: 4 }}>
           <button onClick={() => setWeekAnchor(iso(addDays(startOfWeek(weekAnchor), -7)))} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', padding: 2, fontSize: 16 }}>‹</button>
           <div style={{ flex: 1, display: 'flex', justifyContent: 'space-between' }}>
             {weekDays.map(d => {
@@ -1041,7 +1069,7 @@ function CarbTrack() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
               <span style={{ fontSize: 11.5, color: MUTED }}>— {dailyQuote.author || 'Unknown'}</span>
               {dailyQuote.text.length > 90 && (
-                <button onClick={() => setQuoteExpanded(!quoteExpanded)} style={{ background: 'none', border: 'none', color: BURGUNDY, fontSize: 11.5, fontWeight: 600 }}>{quoteExpanded ? 'See less' : 'See more'}</button>
+                <button onClick={() => setQuoteExpanded(!quoteExpanded)} style={{ background: 'none', border: 'none', color: LABEL, fontSize: 11.5, fontWeight: 600 }}>{quoteExpanded ? 'See less' : 'See more'}</button>
               )}
             </div>
           </div>
@@ -1061,13 +1089,13 @@ function CarbTrack() {
         <HydrationCard water={dayData.water} target={targets.water} onAdd={addWater} gold={goldCards.hydration} />
 
         <button onClick={() => setShowRegulars(true)} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: `1px solid ${BORDER}`, width: '100%', textAlign: 'left' }}>
-          <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>⭐ Frequent Foods</span>
+          <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: LABEL, fontWeight: 600 }}>⭐ Frequent Foods</span>
           <span style={{ color: MUTED, fontSize: 13 }}>{commonFoods.length ? `${commonFoods.length} saved →` : 'None yet →'}</span>
         </button>
 
         {mealTemplates.length > 0 && (
           <button onClick={() => setShowTemplates(true)} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: `1px solid ${BORDER}`, width: '100%', textAlign: 'left' }}>
-            <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>📋 Meal Templates</span>
+            <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: LABEL, fontWeight: 600 }}>📋 Meal Templates</span>
             <span style={{ color: MUTED, fontSize: 13 }}>{mealTemplates.length} saved →</span>
           </button>
         )}
@@ -1082,7 +1110,7 @@ function CarbTrack() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           <div className="card" style={{ padding: 12, display: 'flex', flexDirection: 'column', minHeight: 122 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 10.5, letterSpacing: '0.03em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>📏 Measure</span>
+              <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 10.5, letterSpacing: '0.03em', textTransform: 'uppercase', color: LABEL, fontWeight: 600 }}>📏 Measure</span>
               <button className="pill" style={{ padding: '4px 7px', fontSize: 10 }} onClick={() => setShowMeasureForm(true)}>+</button>
             </div>
             <div style={{ flex: 1 }}>
@@ -1095,7 +1123,7 @@ function CarbTrack() {
 
           <div className={weightGold ? 'card gold-card' : 'card'} style={{ padding: 12, display: 'flex', flexDirection: 'column', minHeight: 122 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 10.5, letterSpacing: '0.03em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>Weight{weightGold && <span style={{ fontSize: 9, color: '#8A6D1D', fontWeight: 700, marginLeft: 5 }}>🔥{weightMilestoneLevel * 5}lb</span>}</span>
+              <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 10.5, letterSpacing: '0.03em', textTransform: 'uppercase', color: LABEL, fontWeight: 600 }}>Weight{weightGold && <span style={{ fontSize: 9, color: '#8A6D1D', fontWeight: 700, marginLeft: 5 }}>🔥{weightMilestoneLevel * 5}lb</span>}</span>
               <button className="pill" style={{ padding: '4px 7px', fontSize: 10 }} onClick={() => setShowWeightForm(true)}>+</button>
             </div>
             <div style={{ flex: 1 }}>
@@ -1112,7 +1140,7 @@ function CarbTrack() {
 
           <div className="card" style={{ padding: 12, display: 'flex', flexDirection: 'column', minHeight: 122 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: "'Oswald', sans-serif", fontSize: 10.5, letterSpacing: '0.03em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>♥ BP</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: "'Oswald', sans-serif", fontSize: 10.5, letterSpacing: '0.03em', textTransform: 'uppercase', color: LABEL, fontWeight: 600 }}>♥ BP</span>
               <button className="pill" style={{ padding: '4px 7px', fontSize: 10 }} onClick={() => setShowBpForm(true)}>+</button>
             </div>
             <div style={{ flex: 1 }}>
@@ -1125,7 +1153,7 @@ function CarbTrack() {
 
           <div className="card" style={{ padding: 12, display: 'flex', flexDirection: 'column', minHeight: 122 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 10.5, letterSpacing: '0.03em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>😴 Sleep</span>
+              <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 10.5, letterSpacing: '0.03em', textTransform: 'uppercase', color: LABEL, fontWeight: 600 }}>😴 Sleep</span>
               <button className="pill" style={{ padding: '4px 7px', fontSize: 10 }} onClick={() => setShowSleepForm(true)}>+</button>
             </div>
             <div style={{ flex: 1 }}>
@@ -1142,7 +1170,7 @@ function CarbTrack() {
 
         <div className={goldCards.training ? 'card gold-card' : 'card'} style={{ marginBottom: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>Training{goldCards.training && <span style={{ fontSize: 10, color: '#8A6D1D', fontWeight: 700 }}>🔥 7-day streak</span>}</span>
+            <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: LABEL, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>Training{goldCards.training && <span style={{ fontSize: 10, color: '#8A6D1D', fontWeight: 700 }}>🔥 7-day streak</span>}</span>
             <button className="pill" onClick={() => setShowTrainingType(true)}>+ Log</button>
           </div>
           {dayData.workouts.length === 0 ? <div style={{ color: MUTED, fontSize: 13 }}>No sessions logged.</div> : (
@@ -1169,7 +1197,7 @@ function CarbTrack() {
         </div>
 
         <a href="https://www.dietdoctor.com" target="_blank" rel="noopener noreferrer" className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textDecoration: 'none' }}>
-          <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: BURGUNDY, fontWeight: 600 }}>🔗 Keto Resources</span>
+          <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: LABEL, fontWeight: 600 }}>🔗 Keto Resources</span>
           <span style={{ color: MUTED, fontSize: 13 }}>Diet Doctor →</span>
         </a>
       </div>
@@ -1216,7 +1244,7 @@ function CarbTrack() {
           onTogglePin={toggleExercisePin} onDelete={deleteExercise} onViewHistory={(name) => setExerciseHistoryFor(name)} />
       )}
       {showSetEntry && (
-        <SetEntryModal exerciseName={pendingExerciseName} profileWeight={profile.currentWeight} initialSets={pendingInitialSets} history={getExerciseHistory(pendingExerciseName || '')}
+        <SetEntryModal exerciseName={pendingExerciseName} profileWeight={profile.currentWeight} initialSets={pendingInitialSets} history={getExerciseHistory(pendingExerciseName || '')} profileContext={buildProfileContext()}
           onClose={() => { setShowSetEntry(false); setPendingExerciseName(null); setPendingInitialSets(null); setPendingTrainingType(null); }}
           onSave={(w) => {
             const priorHistory = getExerciseHistory(pendingExerciseName);
@@ -1235,7 +1263,7 @@ function CarbTrack() {
         <EntryHistoryModal title={`${exerciseHistoryFor} History`} entries={getExerciseHistory(exerciseHistoryFor)} onClose={() => setExerciseHistoryFor(null)}
           renderRow={w => (w.sets || []).map(s => `${s.weight}×${s.reps}`).join(', ')} />
       )}
-      {showAddWorkout && <WorkoutModal initialType={pendingTrainingType} profileWeight={profile.currentWeight} onClose={() => { setShowAddWorkout(false); setPendingTrainingType(null); }} onSave={(w) => { addWorkout(w); setShowAddWorkout(false); setPendingTrainingType(null); }} />}
+      {showAddWorkout && <WorkoutModal initialType={pendingTrainingType} profileWeight={profile.currentWeight} history={getTrainingTypeHistory(pendingTrainingType)} profileContext={buildProfileContext()} onClose={() => { setShowAddWorkout(false); setPendingTrainingType(null); }} onSave={(w) => { addWorkout(w); setShowAddWorkout(false); setPendingTrainingType(null); }} />}
       {showWeightForm && <WeightModal onClose={() => setShowWeightForm(false)} onSave={(entry) => { persistWeight([...weightLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowWeightForm(false); }} />}
       {showBpForm && <BpModal onClose={() => setShowBpForm(false)} onSave={(entry) => { persistBp([...bpLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowBpForm(false); }} />}
       {showMeasureForm && <MeasureModal onClose={() => setShowMeasureForm(false)} onSave={(entry) => { persistMeasure([...measureLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowMeasureForm(false); }} />}
@@ -1302,7 +1330,7 @@ function ProfileSetup({ onDone, onReconnect }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
             {LEVELS.map(level => (
               <button key={level.num} onClick={() => pickLevel(level)} style={{ background: WHITE, border: 'none', borderRadius: 14, padding: '16px 14px', textAlign: 'left', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
-                <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 15, fontWeight: 700, color: BURGUNDY, marginBottom: 6 }}>Level {level.num}</div>
+                <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 15, fontWeight: 700, color: LABEL, marginBottom: 6 }}>Level {level.num}</div>
                 <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 22, fontWeight: 700, color: TEXT }}>{level.carbs}<span style={{ fontSize: 11, color: MUTED, fontWeight: 500, display: 'block', marginTop: 2 }}>g carbs / day</span></div>
               </button>
             ))}
@@ -1346,7 +1374,7 @@ function ProfileSetup({ onDone, onReconnect }) {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, marginBottom: 8 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: BURGUNDY, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Daily Targets — suggested, edit as you like</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: LABEL, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Daily Targets — suggested, edit as you like</div>
             {selectedLevel && <span style={{ fontSize: 10.5, fontWeight: 700, color: WHITE, background: BURGUNDY, borderRadius: 20, padding: '3px 9px' }}>Level {selectedLevel} selected</span>}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -1365,7 +1393,7 @@ function ProfileSetup({ onDone, onReconnect }) {
         </div>
 
         <div style={{ marginTop: 16, padding: '14px 16px', background: WHITE, borderRadius: 12 }}>
-          <div style={{ fontFamily: "'Oswald', sans-serif", fontWeight: 700, fontSize: 13, color: BURGUNDY, marginBottom: 10 }}>📱 Add CarbTrack to Your Home Screen</div>
+          <div style={{ fontFamily: "'Oswald', sans-serif", fontWeight: 700, fontSize: 13, color: LABEL, marginBottom: 10 }}>📱 Add CarbTrack to Your Home Screen</div>
           <HomeScreenSteps />
         </div>
       </div>
@@ -1497,7 +1525,7 @@ function PinVerifyScreen({ onUnlocked }) {
           <Field label="PIN"><input type="tel" inputMode="numeric" value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, ''))} maxLength={6} autoFocus /></Field>
           {error && <div style={{ color: RED, fontSize: 12.5, marginBottom: 10 }}>{error}</div>}
           <PrimaryButton onClick={submit} label={checking ? 'Checking…' : 'Unlock'} disabled={checking} />
-          <button onClick={() => setShowRecover(true)} style={{ width: '100%', background: 'none', border: 'none', color: BURGUNDY, fontSize: 12.5, marginTop: 10, padding: 8, fontWeight: 600 }}>Forgot your PIN?</button>
+          <button onClick={() => setShowRecover(true)} style={{ width: '100%', background: 'none', border: 'none', color: LABEL, fontSize: 12.5, marginTop: 10, padding: 8, fontWeight: 600 }}>Forgot your PIN?</button>
         </div>
       </div>
     </div>
@@ -1618,7 +1646,7 @@ function RegularsList({ regulars, remaining, onEdit, onDelete, onTogglePin, onBa
       ) : (
         groupKeys.map(gk => (
           <div key={gk || 'all'} style={{ marginBottom: hasRestaurants ? 14 : 0 }}>
-            {hasRestaurants && <div style={{ fontSize: 11, fontWeight: 700, color: BURGUNDY, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>{gk}</div>}
+            {hasRestaurants && <div style={{ fontSize: 11, fontWeight: 700, color: LABEL, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>{gk}</div>}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {groups[gk].map(r => {
                 const inCart = cart[r.id] !== undefined;
@@ -1633,7 +1661,7 @@ function RegularsList({ regulars, remaining, onEdit, onDelete, onTogglePin, onBa
                       <div style={{ fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 5 }}>
                         {r.pinned && <span style={{ fontSize: 11 }}>📌</span>}
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
-                        {inCart && <span style={{ fontSize: 11.5, color: BURGUNDY, fontWeight: 700 }}>× {cart[r.id]}{r.unit || 'pc'}</span>}
+                        {inCart && <span style={{ fontSize: 11.5, color: LABEL, fontWeight: 700 }}>× {cart[r.id]}{r.unit || 'pc'}</span>}
                       </div>
                       <div style={{ fontSize: 12, color: MUTED }}>{Math.round(r.protein)}g P · {Math.max(0, Math.round(r.carbs - r.fiber))}g net C</div>
                     </button>
@@ -1650,7 +1678,7 @@ function RegularsList({ regulars, remaining, onEdit, onDelete, onTogglePin, onBa
 
       {cartCount > 0 && (
         <div style={{ position: 'sticky', bottom: 0, left: 0, right: 0, background: WHITE, paddingTop: 10, marginTop: 14, boxShadow: '0 -8px 12px -6px rgba(0,0,0,0.08)', display: 'flex', gap: 8 }}>
-          <button onClick={saveTemplate} style={{ flex: 1, background: WHITE, border: `1.5px solid ${BURGUNDY}`, borderRadius: 9, padding: 13, color: BURGUNDY, fontWeight: 700, fontSize: 13 }}>Save as Template</button>
+          <button onClick={saveTemplate} style={{ flex: 1, background: WHITE, border: `1.5px solid ${BURGUNDY}`, borderRadius: 9, padding: 13, color: LABEL, fontWeight: 700, fontSize: 13 }}>Save as Template</button>
           <div style={{ flex: 1 }}><PrimaryButton onClick={confirmBatch} label={`Add ${cartCount}`} /></div>
         </div>
       )}
@@ -1979,7 +2007,7 @@ function AIAddModal({ mealLabel, onClose, onSave }) {
             ))}
             {results.length === 0 && <div style={{ color: MUTED, fontSize: 13 }}>All items removed — go back and search again.</div>}
           </div>
-          <button onClick={() => setResults(null)} style={{ background: 'none', border: 'none', color: BURGUNDY, fontSize: 12.5, fontWeight: 600, marginBottom: 4 }}>← Search again</button>
+          <button onClick={() => setResults(null)} style={{ background: 'none', border: 'none', color: LABEL, fontSize: 12.5, fontWeight: 600, marginBottom: 4 }}>← Search again</button>
           <PrimaryButton onClick={confirmAdd} disabled={results.length === 0} label={`Add to ${mealLabel}`} />
         </>
       )}
@@ -2072,7 +2100,7 @@ function ExercisePickerModal({ exercises, onClose, onPick, onTogglePin, onDelete
   );
 }
 
-function SetEntryModal({ exerciseName, profileWeight, initialSets, history, onClose, onSave }) {
+function SetEntryModal({ exerciseName, profileWeight, initialSets, history, profileContext, onClose, onSave }) {
   const [sets, setSets] = useState(initialSets ? initialSets.map(s => ({ ...s })) : []);
   const [weight, setWeight] = useState('');
   const [reps, setReps] = useState('');
@@ -2087,7 +2115,7 @@ function SetEntryModal({ exerciseName, profileWeight, initialSets, history, onCl
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch('/api/suggest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ exerciseName, history: history || [] }) });
+        const res = await fetch('/api/suggest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ exerciseName, history: history || [], profile: profileContext || {} }) });
         const data = await res.json();
         if (data.suggestion) setSuggestion(data.suggestion);
       } catch (e) { /* offline or failed — just skip the suggestion, don't block logging */ }
@@ -2117,7 +2145,7 @@ function SetEntryModal({ exerciseName, profileWeight, initialSets, history, onCl
       {suggestion && !suggestionLoading && (
         <div style={{ background: '#EAF1FB', border: '1px solid #C7D9F5', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#1D4ED8' }}>💡 {suggestion}</div>
       )}
-      <div style={{ fontSize: 12, fontWeight: 600, color: BURGUNDY, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>Sets</div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: LABEL, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>Sets</div>
       {initialSets && initialSets.length > 0 && sets.length === initialSets.length && <div style={{ fontSize: 11.5, color: MUTED, marginBottom: 8, marginTop: -4 }}>Pre-filled from last time — edit or clear as needed</div>}
       {sets.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
@@ -2222,7 +2250,7 @@ function WorkoutAiModal({ initialType, onClose, onSave }) {
               <Field label="Cadence (rpm)"><input type="number" value={result.cadence} onChange={e => setResult({ ...result, cadence: e.target.value })} /></Field>
             </>}
           </div>
-          <button onClick={() => setResult(null)} style={{ background: 'none', border: 'none', color: BURGUNDY, fontSize: 12.5, fontWeight: 600, margin: '10px 0 4px' }}>← Try another photo</button>
+          <button onClick={() => setResult(null)} style={{ background: 'none', border: 'none', color: LABEL, fontSize: 12.5, fontWeight: 600, margin: '10px 0 4px' }}>← Try another photo</button>
           <PrimaryButton onClick={confirmAdd} label="Add to Training" />
         </>
       )}
@@ -2230,13 +2258,26 @@ function WorkoutAiModal({ initialType, onClose, onSave }) {
   );
 }
 
-function WorkoutModal({ initialType, profileWeight, onClose, onSave }) {
+function WorkoutModal({ initialType, profileWeight, history, profileContext, onClose, onSave }) {
   const [w, setW] = useState({ type: initialType || 'Strength', duration: '', distance: '', weightLifted: '', reps: '', avgSpeed: '', cadence: '', activeCalories: '', avgHeartRate: '', notes: '' });
+  const [suggestion, setSuggestion] = useState(null);
+  const [suggestionLoading, setSuggestionLoading] = useState(true);
   const num = (v) => parseFloat(v) || 0;
   const isCardioLike = w.type === 'Walk' || w.type === 'Cardio';
   const isStrength = w.type === 'Strength';
   const isCycling = w.type === 'Cycling';
   const isMixed = w.type === 'Mixed';
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/suggest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trainingType: initialType, history: history || [], profile: profileContext || {} }) });
+        const data = await res.json();
+        if (data.suggestion) setSuggestion(data.suggestion);
+      } catch (e) { /* offline or failed — just skip the suggestion, don't block logging */ }
+      setSuggestionLoading(false);
+    })();
+  }, []);
 
   const submit = () => {
     if (!w.duration) return;
@@ -2258,6 +2299,10 @@ function WorkoutModal({ initialType, profileWeight, onClose, onSave }) {
 
   return (
     <Modal title="Log Training" onClose={onClose}>
+      {suggestionLoading && <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 14, fontStyle: 'italic' }}>Thinking of a suggestion…</div>}
+      {suggestion && !suggestionLoading && (
+        <div style={{ background: '#EAF1FB', border: '1px solid #C7D9F5', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#1D4ED8' }}>💡 {suggestion}</div>
+      )}
       <Field label="Type"><select value={w.type} onChange={e => setW({ ...w, type: e.target.value })}><option>Strength</option><option>Cardio</option><option>Walk</option><option>Cycling</option><option>Mobility</option><option>Mixed</option></select></Field>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <Field label="Duration (min)"><input type="number" value={w.duration} onChange={e => setW({ ...w, duration: e.target.value })} /></Field>
@@ -2384,7 +2429,7 @@ function SettingsModal({ profile, onClose, onSave, onExport, onShowHome, onShowH
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
           {LEVELS.map(level => (
             <button key={level.num} onClick={() => { setT({ calories: level.calories, protein: level.protein, netCarbs: level.carbs, fat: level.fat, water: level.water }); setShowLevelPicker(false); }} style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 12, padding: '14px 8px', textAlign: 'center' }}>
-              <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, fontWeight: 700, color: BURGUNDY, marginBottom: 4 }}>Level {level.num}</div>
+              <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, fontWeight: 700, color: LABEL, marginBottom: 4 }}>Level {level.num}</div>
               <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700 }}>{level.carbs}<span style={{ fontSize: 10, color: MUTED, fontWeight: 500, display: 'block' }}>g carbs</span></div>
             </button>
           ))}
@@ -2397,13 +2442,13 @@ function SettingsModal({ profile, onClose, onSave, onExport, onShowHome, onShowH
   return (
     <Modal title="Settings" onClose={onClose}>
       <div style={{ background: '#F6F1F2', borderRadius: 10, padding: '12px 14px', marginBottom: 18 }}>
-        <div style={{ fontSize: 12.5, fontWeight: 700, color: BURGUNDY, marginBottom: 4 }}>Created by Carl Cooper and his AI assistant</div>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: LABEL, marginBottom: 4 }}>Created by Carl Cooper and his AI assistant</div>
         <div style={{ fontSize: 11.5, color: MUTED, marginBottom: 6 }}>Suggestions, questions, or comments welcome:</div>
         <div style={{ fontSize: 11.5, color: TEXT }}>817-454-7267</div>
         <div style={{ fontSize: 11.5, color: TEXT }}>carlcooper@lynchlegacyexp.com</div>
       </div>
 
-      <div style={{ fontSize: 12, fontWeight: 600, color: BURGUNDY, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>Night Mode</div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: LABEL, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>Night Mode</div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 18 }}>
         {['auto', 'light', 'dark'].map(opt => (
           <button key={opt} onClick={() => onSetNightMode(opt)} style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: `1.5px solid ${nightModeSetting === opt ? BURGUNDY : BORDER}`, background: nightModeSetting === opt ? BURGUNDY : 'transparent', color: nightModeSetting === opt ? WHITE : TEXT, fontWeight: 600, fontSize: 12.5, textTransform: 'capitalize' }}>{opt}</button>
@@ -2411,7 +2456,7 @@ function SettingsModal({ profile, onClose, onSave, onExport, onShowHome, onShowH
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: BURGUNDY, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Daily Targets</div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: LABEL, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Daily Targets</div>
         <div style={{ display: 'flex', gap: 6 }}>
           <button onClick={() => setTargetsExpanded(!targetsExpanded)} style={{ background: MANUAL_GRAY, border: 'none', borderRadius: 8, padding: '7px 12px', color: WHITE, fontSize: 12.5, fontWeight: 700 }}>Manual</button>
           <button onClick={() => setShowLevelPicker(true)} style={{ background: GRAY, border: 'none', borderRadius: 8, padding: '7px 12px', color: WHITE, fontSize: 12.5, fontWeight: 700 }}>Change Level</button>
