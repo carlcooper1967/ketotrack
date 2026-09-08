@@ -1,11 +1,14 @@
 // Cloudflare Pages Function — POST /api/suggest
-// Generates a short, live suggestion for a specific exercise using Gemini, based on that
-// exercise's own past logged history (weights/reps/dates). Shown when the user picks an
-// exercise to log, so it needs to stay brief and fast.
+// Generates a short, live suggestion using Gemini when the user is about to log a workout.
+// Works for a specific Strength exercise (exerciseName + that exercise's own history) or for
+// any other training type (Walk/Cardio/Cycling/Mobility/Mixed — type + recent sessions of that type).
+// Now also factors in personal context (age, weight trend, latest BP, goals), not just past performance.
 
-const SUGGEST_PROMPT = `You are a knowledgeable strength coach. The user is about to log a set of a specific exercise. You have their past logged history for THIS exercise only (dates, sets, weight, reps).
+const SUGGEST_PROMPT = `You are a knowledgeable, safety-conscious fitness coach. The user is about to log a workout. You have:
+- Their personal context: age, current weight, recent weight trend, latest blood pressure reading (if any), and their daily goals.
+- Their past history for THIS specific activity (either a named exercise's sets/reps/weight, or recent sessions of this training type).
 
-Write ONE short, specific, actionable suggestion (1-2 sentences, under 30 words) for today's session — e.g. suggest a weight/rep target to beat their recent best, note a pattern (getting stronger, plateauing, been a while since they did this one), or encourage good form/rest if they've been pushing hard. Be concrete with numbers when history supports it. If there's no history at all (first time logging this exercise), just give a brief, encouraging note to start conservatively and track it.
+Write ONE short, specific, actionable suggestion (1-2 sentences, under 35 words) for today's session. Use concrete numbers from history when available (e.g. a weight/rep target to beat, a pace or duration goal). Factor in personal context sensibly — e.g. suggest a more moderate pace/intensity if blood pressure has been running high, or note age-appropriate pacing — but do not give medical advice or diagnose anything, just practical, encouraging fitness guidance. If there's no history at all for this activity, give a brief, encouraging note to start conservatively and track it.
 
 Respond with ONLY valid JSON (no markdown, no commentary), in this exact shape:
 {"suggestion":"string"}`;
@@ -22,12 +25,14 @@ export async function onRequestPost({ request, env }) {
       return new Response(JSON.stringify({ error: 'not_configured', message: 'GEMINI_API_KEY is not set.' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
     }
     const body = await request.json();
-    const { exerciseName, history } = body;
-    if (!exerciseName) {
-      return new Response(JSON.stringify({ error: 'bad_request', message: 'exerciseName is required' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+    const { trainingType, exerciseName, history, profile } = body;
+    if (!trainingType && !exerciseName) {
+      return new Response(JSON.stringify({ error: 'bad_request', message: 'trainingType or exerciseName is required' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
     }
 
-    const parts = [{ text: SUGGEST_PROMPT + `\n\nExercise: ${exerciseName}\nPast history (most recent first):\n` + JSON.stringify(history || []) }];
+    const activityLabel = exerciseName ? `Exercise: ${exerciseName}` : `Training type: ${trainingType}`;
+    const contextText = `${activityLabel}\n\nPersonal context:\n${JSON.stringify(profile || {})}\n\nPast history for this activity (most recent first):\n${JSON.stringify(history || [])}`;
+    const parts = [{ text: SUGGEST_PROMPT + '\n\n' + contextText }];
 
     const geminiRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${env.GEMINI_API_KEY}`,
