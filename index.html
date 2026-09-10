@@ -62,7 +62,7 @@ const MEALS = [
   { key: 'snacks', label: 'Snacks', emoji: '🍪' },
 ];
 
-const BUILD_NUMBER = 34;
+const BUILD_NUMBER = 37;
 const DEFAULT_TARGETS = { calories: 1800, protein: 90, netCarbs: 25, fat: 150, water: 100 };
 const LEVELS = [1, 2, 3].map((num, i) => {
   const carbs = [20, 50, 100][i];
@@ -215,7 +215,7 @@ function HydrationCard({ water, target, onAdd, gold }) {
         </div>
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
-        {chips.map(c => <button key={c} onClick={() => onAdd(c)} style={{ flex: 1, background: '#F6F1F2', border: `1px solid ${BORDER}`, borderRadius: 8, padding: '9px 0', fontSize: 12.5, fontWeight: 600, color: LABEL }}>+{c}</button>)}
+        {chips.map(c => <button key={c} onClick={() => onAdd(c)} style={{ flex: 1, background: 'var(--input-bg)', border: `1px solid ${BORDER}`, borderRadius: 8, padding: '9px 0', fontSize: 12.5, fontWeight: 600, color: LABEL }}>+{c}</button>)}
       </div>
     </div>
   );
@@ -399,6 +399,7 @@ function CarbTrack() {
   const [coachError, setCoachError] = useState(null);
   const [exceptionDaysState, setExceptionDaysState] = useState([]);
   const [expandedMeals, setExpandedMeals] = useState({});
+  const [trainingExpanded, setTrainingExpanded] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -408,7 +409,13 @@ function CarbTrack() {
       setBpLog(load('kt-bp-log', []));
       setMeasureLog(load('kt-measure-log', []));
       setSleepLog(load('kt-sleep-log', []));
-      setCommonFoods(load('kt-common-foods', []));
+      if (!load('kt-ff-v2-reset', false)) {
+        setCommonFoods([]);
+        save('kt-common-foods', []);
+        save('kt-ff-v2-reset', true);
+      } else {
+        setCommonFoods(load('kt-common-foods', []));
+      }
       setDismissed(load('kt-dismissed', {}));
       setExceptionDaysState(load('kt-exception-days', []));
       setMealTemplates(load('kt-meal-templates', []));
@@ -500,14 +507,16 @@ function CarbTrack() {
 
   // record / bump a food's frequency in Frequent Foods (unified across meals, no fuzzy matching)
   const recordCommonFood = (food, snapshot) => {
-    const key = food.name.trim().toLowerCase();
-    const idx = snapshot.findIndex(cf => cf.name.trim().toLowerCase() === key);
+    const matchName = (food.canonicalName || food.name).trim().toLowerCase();
+    const idx = snapshot.findIndex(cf => cf.name.trim().toLowerCase() === matchName);
     if (idx >= 0) {
       const next = [...snapshot];
       next[idx] = { ...next[idx], count: (next[idx].count || 1) + 1 };
       return next;
     }
-    return [...snapshot, { id: Date.now() + Math.random(), name: food.name, protein: food.protein, carbs: food.carbs, fiber: food.fiber, fat: food.fat, calories: food.calories, count: 1, pinned: false }];
+    // brand new food — per-unit macros default to what was logged this time (1 unit), category
+    // starts uncategorized until the AI sweep or Clean Up assigns one
+    return [...snapshot, { id: Date.now() + Math.random(), name: food.canonicalName || food.name, protein: food.protein, carbs: food.carbs, fiber: food.fiber, fat: food.fat, calories: food.calories, count: 1, pinned: false, category: null }];
   };
 
   const addFood = (mealKey, food) => {
@@ -542,9 +551,11 @@ function CarbTrack() {
   const logRegularsToMeal = (regulars, mealKey) => {
     const list = Array.isArray(regulars) ? regulars : [regulars];
     addFoodBatch(mealKey, list.map(r => {
-      const q = r.qty && r.qty > 0 ? r.qty : 1;
-      const unit = r.unit || 'pc';
-      return { name: q !== 1 ? `${q}${unit} ${r.name}` : r.name, protein: r.protein * q, carbs: r.carbs * q, fiber: r.fiber * q, fat: r.fat * q, calories: r.calories * q };
+      const q = r.qty && r.qty > 0 ? r.qty : 1; // qty is always in BASE units here, for correct macro math
+      const displayQty = r.displayQty || q;
+      const displayUnit = r.displayUnit || (CATEGORY_UNITS[r.category] ? CATEGORY_UNITS[r.category].baseUnit : 'pc');
+      const name = (displayQty !== 1) ? `${displayQty} ${displayUnit} ${r.name}` : r.name;
+      return { name, canonicalName: r.name, protein: r.protein * q, carbs: r.carbs * q, fiber: r.fiber * q, fat: r.fat * q, calories: r.calories * q };
     }), false);
     setPickMealFor(null);
   };
@@ -595,11 +606,11 @@ function CarbTrack() {
         const nameChanged = items[0]._rest !== original.name;
         if (items[0]._unit && items[0]._qty > 1) {
           // detected unit + a real multiplier — divide the macros down to per-unit
-          merged.push({ ...original, name: items[0]._rest, unit: items[0]._unit,
+          merged.push({ ...original, name: items[0]._rest,
             protein: original.protein / items[0]._qty, carbs: original.carbs / items[0]._qty, fiber: original.fiber / items[0]._qty, fat: original.fat / items[0]._qty, calories: original.calories / items[0]._qty });
         } else if (nameChanged) {
           // rename only (covers: plain leading number with no unit word, parenthetical strip, qty===1 with a detected unit) — macros untouched
-          merged.push({ ...original, name: items[0]._rest, unit: items[0]._unit || original.unit });
+          merged.push({ ...original, name: items[0]._rest });
         } else {
           merged.push(original);
         }
@@ -612,9 +623,9 @@ function CarbTrack() {
       const totalCount = items.reduce((s, it) => s + (it.count || 1), 0);
       const anyPinned = items.some(it => it.pinned);
       const canonical = items.reduce((a, b) => (b.count || 1) > (a.count || 1) ? b : a);
-      const detectedUnit = items.find(it => it._unit)?._unit || canonical.unit || null;
+      const existingCategory = items.find(it => it.category)?.category || null;
       merged.push({
-        id: canonical.id, name: canonical._rest, restaurant: canonical.restaurant || null, unit: detectedUnit,
+        id: canonical.id, name: canonical._rest, restaurant: canonical.restaurant || null, category: existingCategory,
         protein: avg.protein / n, carbs: avg.carbs / n, fiber: avg.fiber / n, fat: avg.fat / n, calories: avg.calories / n,
         count: totalCount, pinned: anyPinned,
       });
@@ -622,6 +633,36 @@ function CarbTrack() {
     persistCommon(merged);
     return mergedCount;
   };
+
+  const categorizeUncategorizedFoods = async () => {
+    const uncategorized = commonFoods.filter(cf => !cf.category);
+    if (uncategorized.length === 0) return;
+    try {
+      const res = await fetch('/api/categorize', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ names: uncategorized.map(cf => cf.name) }) });
+      const data = await res.json();
+      if (!data.results) return;
+      const byName = {};
+      data.results.forEach(r => { byName[r.name.trim().toLowerCase()] = r.category; });
+      const updated = commonFoods.map(cf => (!cf.category && byName[cf.name.trim().toLowerCase()]) ? { ...cf, category: byName[cf.name.trim().toLowerCase()] } : cf);
+      persistCommon(updated);
+    } catch (e) { /* offline or failed — foods stay uncategorized until next attempt, defaults to 'piece' in the meantime */ }
+  };
+
+  const runCleanupAndCategorize = () => {
+    const n = cleanupFrequentFoods();
+    categorizeUncategorizedFoods();
+    return n;
+  };
+
+  // daily automatic sweep — categorize anything new that slipped in, once per day, silently
+  useEffect(() => {
+    if (!loaded) return;
+    const todayKey = todayISO();
+    if (load('kt-ff-sweep-date', null) !== todayKey) {
+      save('kt-ff-sweep-date', todayKey);
+      categorizeUncategorizedFoods();
+    }
+  }, [loaded]);
 
   const addWorkout = (w) => persistDay({ ...dayData, workouts: [...dayData.workouts, { ...w, id: Date.now() }] });
   const removeWorkout = (id) => persistDay({ ...dayData, workouts: dayData.workouts.filter(w => w.id !== id) });
@@ -1015,7 +1056,7 @@ function CarbTrack() {
       <div style={{ maxWidth: 480, margin: '0 auto', padding: '20px 20px 0', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
         {showInstallCard && (
-          <div className="banner" style={{ background: '#F6F1F2', borderColor: BORDER }}>
+          <div className="banner" style={{ background: 'var(--input-bg)', borderColor: BORDER }}>
             <span style={{ fontSize: 13, color: TEXT }}>📱 Add CarbTrack to your Home Screen so it opens like a real app.</span>
             <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
               <button className="pill" onClick={() => setShowHome(true)}>Show me</button>
@@ -1169,31 +1210,46 @@ function CarbTrack() {
         </div>
 
         <div className={goldCards.training ? 'card gold-card' : 'card'} style={{ marginBottom: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: LABEL, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>Training{goldCards.training && <span style={{ fontSize: 10, color: '#8A6D1D', fontWeight: 700 }}>🔥 7-day streak</span>}</span>
-            <button className="pill" onClick={() => setShowTrainingType(true)}>+ Log</button>
-          </div>
-          {dayData.workouts.length === 0 ? <div style={{ color: MUTED, fontSize: 13 }}>No sessions logged.</div> : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {dayData.workouts.map(w => {
-                const pace = w.distance && w.duration ? (w.duration / w.distance).toFixed(1) : null;
-                return (
-                  <div key={w.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: `1px solid ${BORDER}` }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span>🏋</span>
-                      <div>
-                        <div style={{ fontSize: 14, fontWeight: 500 }}>{w.exerciseName || w.type}</div>
-                        <div style={{ fontSize: 11.5, color: MUTED }}>{w.sets ? w.sets.map(s => `${s.weight}×${s.reps}`).join(', ') : ''}{w.duration ? ` · ${w.duration} min` : ''}{w.distance ? ` · ${w.distance} mi` : ''}{pace ? ` · ${pace} min/mi` : ''}{w.avgSpeed ? ` · ${w.avgSpeed} mph` : ''}{w.cadence ? ` · ${w.cadence} rpm` : ''}{!w.sets && w.weightLifted ? ` · ${w.weightLifted} lbs` : ''}{!w.sets && w.reps ? ` × ${w.reps} reps` : ''}{w.activeCalories ? ` · ${w.activeCalories} cal` : ''}{w.avgHeartRate ? ` · ${w.avgHeartRate} bpm avg` : ''}</div>
-                        {w.notes && <div style={{ fontSize: 11.5, color: MUTED }}>{w.notes}</div>}
+          <button onClick={() => setTrainingExpanded(!trainingExpanded)} style={{ display: 'grid', gridTemplateColumns: '105px 1fr auto', alignItems: 'center', width: '100%', background: 'none', border: 'none', textAlign: 'left', marginBottom: trainingExpanded ? 12 : 0, gap: 8 }}>
+            <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: LABEL, fontWeight: 600 }}>Training</span>
+            {!trainingExpanded && (
+              <span style={{ fontSize: 11.5, color: MUTED, textAlign: 'center' }}>
+                {dayData.workouts.length === 0 ? 'no sessions logged' : `${dayData.workouts.length} session${dayData.workouts.length > 1 ? 's' : ''}`}
+                {goldCards.training && ' · 🔥 7-day streak'}
+              </span>
+            )}
+            {trainingExpanded && goldCards.training && <span style={{ fontSize: 10, color: '#8A6D1D', fontWeight: 700, textAlign: 'center' }}>🔥 7-day streak</span>}
+            {trainingExpanded && !goldCards.training && <span />}
+            <span style={{ color: MUTED, fontSize: 12 }}>{trainingExpanded ? '▲' : '▼'}</span>
+          </button>
+          {trainingExpanded && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12, marginTop: -6 }}>
+                <button className="pill" onClick={() => setShowTrainingType(true)}>+ Log</button>
+              </div>
+              {dayData.workouts.length === 0 ? <div style={{ color: MUTED, fontSize: 13 }}>No sessions logged.</div> : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {dayData.workouts.map(w => {
+                    const pace = w.distance && w.duration ? (w.duration / w.distance).toFixed(1) : null;
+                    return (
+                      <div key={w.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: `1px solid ${BORDER}` }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span>🏋</span>
+                          <div>
+                            <div style={{ fontSize: 14, fontWeight: 500 }}>{w.exerciseName || w.type}</div>
+                            <div style={{ fontSize: 11.5, color: MUTED }}>{w.sets ? w.sets.map(s => `${s.weight}×${s.reps}`).join(', ') : ''}{w.duration ? ` · ${w.duration} min` : ''}{w.distance ? ` · ${w.distance} mi` : ''}{pace ? ` · ${pace} min/mi` : ''}{w.avgSpeed ? ` · ${w.avgSpeed} mph` : ''}{w.cadence ? ` · ${w.cadence} rpm` : ''}{!w.sets && w.weightLifted ? ` · ${w.weightLifted} lbs` : ''}{!w.sets && w.reps ? ` × ${w.reps} reps` : ''}{w.activeCalories ? ` · ${w.activeCalories} cal` : ''}{w.avgHeartRate ? ` · ${w.avgHeartRate} bpm avg` : ''}</div>
+                            {w.notes && <div style={{ fontSize: 11.5, color: MUTED }}>{w.notes}</div>}
+                          </div>
+                        </div>
+                        <button onClick={() => removeWorkout(w.id)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 15 }}>✕</button>
                       </div>
-                    </div>
-                    <button onClick={() => removeWorkout(w.id)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 15 }}>✕</button>
-                  </div>
-                );
-              })}
-            </div>
+                    );
+                  })}
+                </div>
+              )}
+              <button onClick={() => setShowTrainingHistory(true)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 11, marginTop: 10, padding: 0, textAlign: 'left' }}>History →</button>
+            </>
           )}
-          <button onClick={() => setShowTrainingHistory(true)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 11, marginTop: 10, padding: 0, textAlign: 'left' }}>History →</button>
         </div>
 
         <a href="https://www.dietdoctor.com" target="_blank" rel="noopener noreferrer" className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textDecoration: 'none' }}>
@@ -1225,7 +1281,7 @@ function CarbTrack() {
         <Modal title="⭐ Frequent Foods" onClose={() => setShowRegulars(false)}>
           <RegularsList regulars={regularsSorted} remaining={{ netCarbs: Math.max(0, targets.netCarbs - totals.netCarbs), calories: Math.max(0, targets.calories - netCalories) }}
             onPick={(r) => { setShowRegulars(false); setPickMealFor(r); }} onEdit={(r) => { setShowRegulars(false); setEditRegular(r); }} onDelete={deleteRegular} onTogglePin={togglePinRegular}
-            onBatchPick={(items) => { setShowRegulars(false); setPickMealFor(items); }} onCleanup={cleanupFrequentFoods}
+            onBatchPick={(items) => { setShowRegulars(false); setPickMealFor(items); }} onCleanup={runCleanupAndCategorize}
             onSaveTemplate={(name, items) => { persistTemplates([...mealTemplates, { id: Date.now() + Math.random(), name, items }]); setShowRegulars(false); }} />
         </Modal>
       )}
@@ -1576,8 +1632,8 @@ function PinRecoverScreen({ onDone, onBack }) {
 
 // ---------- Frequent Foods ----------
 function RegularsList({ regulars, remaining, onEdit, onDelete, onTogglePin, onBatchPick, onCleanup, onSaveTemplate }) {
-  const [cart, setCart] = useState({}); // { [id]: qty }
-  const [qtyPromptFor, setQtyPromptFor] = useState(null); // regular awaiting a quantity entry
+  const [cart, setCart] = useState({}); // { [id]: { qty (base units), displayQty, displayUnit } }
+  const [qtyPromptFor, setQtyPromptFor] = useState(null); // regular awaiting a unit/quantity entry
   const [whatFits, setWhatFits] = useState(false);
   const [cleanupMsg, setCleanupMsg] = useState(null);
 
@@ -1586,12 +1642,13 @@ function RegularsList({ regulars, remaining, onEdit, onDelete, onTogglePin, onBa
       // already in the cart — tapping again removes it directly, no prompt needed
       setCart(prev => { const next = { ...prev }; delete next[r.id]; return next; });
     } else if (r.alwaysOne) {
-      setCart(prev => ({ ...prev, [r.id]: 1 }));
+      const baseUnit = CATEGORY_UNITS[r.category] ? CATEGORY_UNITS[r.category].baseUnit : 'pc';
+      setCart(prev => ({ ...prev, [r.id]: { qty: 1, displayQty: 1, displayUnit: baseUnit } }));
     } else {
       setQtyPromptFor(r);
     }
   };
-  const confirmQty = (id, qty) => { setCart(prev => ({ ...prev, [id]: qty })); setQtyPromptFor(null); };
+  const confirmQty = (id, selection) => { setCart(prev => ({ ...prev, [id]: selection })); setQtyPromptFor(null); };
 
   const fits = (r) => {
     if (!whatFits) return true;
@@ -1605,18 +1662,17 @@ function RegularsList({ regulars, remaining, onEdit, onDelete, onTogglePin, onBa
   const hasRestaurants = visible.some(r => r.restaurant);
   const groupKeys = hasRestaurants ? Object.keys(groups) : ['Other'];
 
-  const cartIds = Object.keys(cart).map(id => (typeof regulars[0]?.id === 'number' ? Number(id) : id));
-
   const confirmBatch = () => {
-    const items = regulars.filter(r => cart[r.id] !== undefined).map(r => ({ ...r, qty: cart[r.id] }));
+    const items = regulars.filter(r => cart[r.id] !== undefined).map(r => ({ ...r, ...cart[r.id] }));
     if (items.length) onBatchPick(items);
     setCart({});
   };
 
   const saveTemplate = () => {
     const items = regulars.filter(r => cart[r.id] !== undefined).map(r => {
-      const q = cart[r.id];
-      return { name: q !== 1 ? `${q}${r.unit || 'x'} ${r.name}` : r.name, protein: r.protein * q, carbs: r.carbs * q, fiber: r.fiber * q, fat: r.fat * q, calories: r.calories * q };
+      const { qty, displayQty, displayUnit } = cart[r.id];
+      const name = displayQty !== 1 ? `${displayQty} ${displayUnit} ${r.name}` : r.name;
+      return { name, protein: r.protein * qty, carbs: r.carbs * qty, fiber: r.fiber * qty, fat: r.fat * qty, calories: r.calories * qty };
     });
     if (items.length === 0) return;
     const name = window.prompt('Name this template (e.g. "My usual breakfast"):');
@@ -1636,8 +1692,8 @@ function RegularsList({ regulars, remaining, onEdit, onDelete, onTogglePin, onBa
   return (
     <div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <button onClick={() => setWhatFits(!whatFits)} style={{ flex: 1, padding: 8, borderRadius: 8, border: `1.5px solid ${whatFits ? BURGUNDY : BORDER}`, background: whatFits ? '#F6F1F2' : WHITE, color: whatFits ? BURGUNDY : MUTED, fontWeight: 600, fontSize: 12 }}>{whatFits ? 'Showing what fits' : 'What fits?'}</button>
-        <button onClick={runCleanup} style={{ padding: '8px 12px', borderRadius: 8, border: `1.5px solid ${BORDER}`, background: WHITE, color: MUTED, fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap' }}>Clean Up</button>
+        <button onClick={() => setWhatFits(!whatFits)} style={{ flex: 1, padding: 8, borderRadius: 8, border: `1.5px solid ${whatFits ? BURGUNDY : BORDER}`, background: whatFits ? 'var(--track-bg)' : 'var(--input-bg)', color: whatFits ? LABEL : MUTED, fontWeight: 600, fontSize: 12 }}>{whatFits ? 'Showing what fits' : 'What fits?'}</button>
+        <button onClick={runCleanup} style={{ padding: '8px 12px', borderRadius: 8, border: `1.5px solid ${BORDER}`, background: 'var(--input-bg)', color: MUTED, fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap' }}>Clean Up</button>
       </div>
       {cleanupMsg && <div style={{ fontSize: 12, color: '#2E7D32', marginBottom: 10 }}>{cleanupMsg}</div>}
 
@@ -1661,11 +1717,11 @@ function RegularsList({ regulars, remaining, onEdit, onDelete, onTogglePin, onBa
                       <div style={{ fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 5 }}>
                         {r.pinned && <span style={{ fontSize: 11 }}>📌</span>}
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
-                        {inCart && <span style={{ fontSize: 11.5, color: LABEL, fontWeight: 700 }}>× {cart[r.id]}{r.unit || 'pc'}</span>}
+                        {inCart && <span style={{ fontSize: 11.5, color: LABEL, fontWeight: 700 }}>× {cart[r.id].displayQty} {cart[r.id].displayUnit}</span>}
                       </div>
                       <div style={{ fontSize: 12, color: MUTED }}>{Math.round(r.protein)}g P · {Math.max(0, Math.round(r.carbs - r.fiber))}g net C</div>
                     </button>
-                    <button onClick={() => onTogglePin(r.id)} style={{ background: 'none', border: 'none', color: r.pinned ? BURGUNDY : '#C9C6D1', fontSize: 15 }}>📌</button>
+                    <button onClick={() => onTogglePin(r.id)} style={{ background: 'none', border: 'none', color: r.pinned ? LABEL : '#C9C6D1', fontSize: 15 }}>📌</button>
                     <button onClick={() => onEdit(r)} style={{ background: 'none', border: 'none', color: '#B8B5BD', fontSize: 14 }}>✎</button>
                     <button onClick={() => onDelete(r.id)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 15 }}>✕</button>
                   </div>
@@ -1677,27 +1733,47 @@ function RegularsList({ regulars, remaining, onEdit, onDelete, onTogglePin, onBa
       )}
 
       {cartCount > 0 && (
-        <div style={{ position: 'sticky', bottom: 0, left: 0, right: 0, background: WHITE, paddingTop: 10, marginTop: 14, boxShadow: '0 -8px 12px -6px rgba(0,0,0,0.08)', display: 'flex', gap: 8 }}>
-          <button onClick={saveTemplate} style={{ flex: 1, background: WHITE, border: `1.5px solid ${BURGUNDY}`, borderRadius: 9, padding: 13, color: LABEL, fontWeight: 700, fontSize: 13 }}>Save as Template</button>
+        <div style={{ position: 'sticky', bottom: 0, left: 0, right: 0, background: 'var(--card-bg)', paddingTop: 10, marginTop: 14, boxShadow: '0 -8px 12px -6px rgba(0,0,0,0.08)', display: 'flex', gap: 8 }}>
+          <button onClick={saveTemplate} style={{ flex: 1, background: 'var(--card-bg)', border: `1.5px solid ${BURGUNDY}`, borderRadius: 9, padding: 13, color: LABEL, fontWeight: 700, fontSize: 13 }}>Save as Template</button>
           <div style={{ flex: 1 }}><PrimaryButton onClick={confirmBatch} label={`Add ${cartCount}`} /></div>
         </div>
       )}
 
       {qtyPromptFor && (
-        <QuantityPromptModal item={qtyPromptFor} onCancel={() => setQtyPromptFor(null)} onConfirm={(q) => confirmQty(qtyPromptFor.id, q)} />
+        <UnitPickerModal item={qtyPromptFor} onCancel={() => setQtyPromptFor(null)} onConfirm={(selection) => confirmQty(qtyPromptFor.id, selection)} />
       )}
     </div>
   );
 }
 
-function QuantityPromptModal({ item, onCancel, onConfirm }) {
+function UnitPickerModal({ item, onCancel, onConfirm }) {
+  const category = item.category && CATEGORY_UNITS[item.category] ? item.category : 'piece'; // uncategorized foods default to piece until the AI sweep runs
+  const catInfo = CATEGORY_UNITS[category];
+  const [selectedUnit, setSelectedUnit] = useState(catInfo.baseUnit);
   const [val, setVal] = useState('1');
-  const unit = item.unit || 'pc';
-  const submit = () => { const q = parseFloat(val); if (q > 0) onConfirm(q); };
+  const unitInfo = catInfo.options.find(o => o.unit === selectedUnit) || catInfo.options[0];
+
+  const submit = () => {
+    const rawQty = parseFloat(val);
+    if (!rawQty || rawQty <= 0) return;
+    const baseQty = rawQty * unitInfo.toBase; // convert to base-unit quantity for correct macro math
+    onConfirm({ qty: baseQty, displayQty: rawQty, displayUnit: selectedUnit });
+  };
+
   return (
     <Modal title={item.name} onClose={onCancel}>
-      <Field label={`Quantity (${unit})`}><input type="number" inputMode="decimal" value={val} onChange={e => setVal(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && submit()} /></Field>
-      <div style={{ fontSize: 12, color: MUTED, marginBottom: 12 }}>Per {unit}: {Math.round(item.protein)}g P · {Math.max(0, Math.round(item.carbs - item.fiber))}g net C · {Math.round(item.calories)} cal</div>
+      {catInfo.options.length > 1 && (
+        <>
+          <div style={{ fontSize: 12, fontWeight: 600, color: LABEL, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>Unit</div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+            {catInfo.options.map(o => (
+              <button key={o.unit} onClick={() => setSelectedUnit(o.unit)} style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: `1.5px solid ${selectedUnit === o.unit ? BURGUNDY : BORDER}`, background: selectedUnit === o.unit ? BURGUNDY : 'transparent', color: selectedUnit === o.unit ? WHITE : TEXT, fontWeight: 600, fontSize: 12.5 }}>{o.unit}</button>
+            ))}
+          </div>
+        </>
+      )}
+      <Field label={`Quantity (${selectedUnit})`}><input type="number" inputMode="decimal" value={val} onChange={e => setVal(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && submit()} /></Field>
+      <div style={{ fontSize: 12, color: MUTED, marginBottom: 12 }}>Per {catInfo.baseUnit}: {Math.round(item.protein)}g P · {Math.max(0, Math.round(item.carbs - item.fiber))}g net C · {Math.round(item.calories)} cal</div>
       <PrimaryButton onClick={submit} label="Add to Selection" />
     </Modal>
   );
@@ -1740,38 +1816,32 @@ function MealPickerModal({ item, onClose, onPick }) {
 }
 
 function EditRegularModal({ item, onClose, onSave }) {
-  const [f, setF] = useState({ unit: 'pc', ...item });
+  const [f, setF] = useState({ category: 'piece', ...item });
   const num = (v) => parseFloat(v) || 0;
-  const submit = () => onSave({ name: f.name, protein: num(f.protein), carbs: num(f.carbs), fiber: num(f.fiber), fat: num(f.fat), calories: num(f.calories), restaurant: f.restaurant || null, unit: f.unit || 'pc', alwaysOne: !!f.alwaysOne });
+  const baseUnit = CATEGORY_UNITS[f.category] ? CATEGORY_UNITS[f.category].baseUnit : 'pc';
+  const submit = () => onSave({ name: f.name, protein: num(f.protein), carbs: num(f.carbs), fiber: num(f.fiber), fat: num(f.fat), calories: num(f.calories), restaurant: f.restaurant || null, category: f.category || 'piece', alwaysOne: !!f.alwaysOne });
   return (
     <Modal title="Edit Regular" onClose={onClose}>
       <Field label="Food name"><input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} /></Field>
-      <Field label='Unit (what one "1" means for this food)'>
-        <select value={f.unit || 'pc'} onChange={e => setF({ ...f, unit: e.target.value })}>
-          <option value="pc">pc (piece)</option>
-          <option value="slice">slice</option>
-          <option value="tbsp">tbsp</option>
-          <option value="tsp">tsp</option>
-          <option value="cup">cup</option>
-          <option value="oz">oz</option>
-          <option value="g">g</option>
-          <option value="serving">serving</option>
+      <Field label="Category (determines which units it can be logged in)">
+        <select value={f.category || 'piece'} onChange={e => setF({ ...f, category: e.target.value })}>
+          {Object.keys(CATEGORY_UNITS).map(cat => <option key={cat} value={cat}>{CATEGORY_LABELS[cat]}</option>)}
         </select>
       </Field>
       <button onClick={() => setF({ ...f, alwaysOne: !f.alwaysOne })} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', padding: 0, marginBottom: 14 }}>
         <div style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${f.alwaysOne ? BURGUNDY : '#C9C6D1'}`, background: f.alwaysOne ? BURGUNDY : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           {f.alwaysOne && <span style={{ color: WHITE, fontSize: 11, fontWeight: 700 }}>✓</span>}
         </div>
-        <span style={{ fontSize: 13, color: TEXT }}>Always just 1 — skip the quantity popup, add directly</span>
+        <span style={{ fontSize: 13, color: TEXT }}>Always just 1 — skip the unit picker, add directly</span>
       </button>
       <Field label="Restaurant (optional, for grouping)"><input value={f.restaurant || ''} onChange={e => setF({ ...f, restaurant: e.target.value })} placeholder="e.g. Sonic" /></Field>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        <Field label={`Protein (g) per ${f.unit || 'pc'}`}><input type="number" value={f.protein} onChange={e => setF({ ...f, protein: e.target.value })} /></Field>
-        <Field label={`Fat (g) per ${f.unit || 'pc'}`}><input type="number" value={f.fat} onChange={e => setF({ ...f, fat: e.target.value })} /></Field>
-        <Field label={`Total carbs (g) per ${f.unit || 'pc'}`}><input type="number" value={f.carbs} onChange={e => setF({ ...f, carbs: e.target.value })} /></Field>
-        <Field label={`Fiber (g) per ${f.unit || 'pc'}`}><input type="number" value={f.fiber} onChange={e => setF({ ...f, fiber: e.target.value })} /></Field>
+        <Field label={`Protein (g) per ${baseUnit}`}><input type="number" value={f.protein} onChange={e => setF({ ...f, protein: e.target.value })} /></Field>
+        <Field label={`Fat (g) per ${baseUnit}`}><input type="number" value={f.fat} onChange={e => setF({ ...f, fat: e.target.value })} /></Field>
+        <Field label={`Total carbs (g) per ${baseUnit}`}><input type="number" value={f.carbs} onChange={e => setF({ ...f, carbs: e.target.value })} /></Field>
+        <Field label={`Fiber (g) per ${baseUnit}`}><input type="number" value={f.fiber} onChange={e => setF({ ...f, fiber: e.target.value })} /></Field>
       </div>
-      <Field label={`Calories per ${f.unit || 'pc'}`}><input type="number" value={f.calories} onChange={e => setF({ ...f, calories: e.target.value })} /></Field>
+      <Field label={`Calories per ${baseUnit}`}><input type="number" value={f.calories} onChange={e => setF({ ...f, calories: e.target.value })} /></Field>
       <PrimaryButton onClick={submit} />
     </Modal>
   );
@@ -1951,7 +2021,7 @@ function AIAddModal({ mealLabel, onClose, onSave }) {
         <>
           <div style={{ display: 'flex', gap: 5, marginBottom: 16 }}>
             {[['text', 'Describe It'], ['photo', 'Photo'], ['receipt', 'Receipt']].map(([key, label]) => (
-              <button key={key} onClick={() => setTab(key)} style={{ flex: 1, padding: 9, borderRadius: 8, border: `1.5px solid ${tab === key ? BURGUNDY : BORDER}`, background: tab === key ? '#F6F1F2' : WHITE, color: tab === key ? BURGUNDY : MUTED, fontWeight: 600, fontSize: 12 }}>{label}</button>
+              <button key={key} onClick={() => setTab(key)} style={{ flex: 1, padding: 9, borderRadius: 8, border: `1.5px solid ${tab === key ? BURGUNDY : BORDER}`, background: tab === key ? 'var(--track-bg)' : 'var(--input-bg)', color: tab === key ? LABEL : MUTED, fontWeight: 600, fontSize: 12 }}>{label}</button>
             ))}
           </div>
 
@@ -1959,7 +2029,7 @@ function AIAddModal({ mealLabel, onClose, onSave }) {
             <Field label="What did you eat?">
               <div style={{ position: 'relative' }}>
                 <textarea value={text} onChange={e => setText(e.target.value)} placeholder={'e.g. "Core Power 42g protein shake and a Sonic small chicken nugget"'}
-                  rows={3} style={{ fontFamily: 'inherit', background: '#FAFAFB', border: `1px solid ${BORDER}`, color: TEXT, borderRadius: 8, padding: '10px 40px 10px 11px', fontSize: 14, width: '100%', resize: 'vertical' }} autoFocus />
+                  rows={3} style={{ fontFamily: 'inherit', background: 'var(--input-bg)', border: `1px solid ${BORDER}`, color: TEXT, borderRadius: 8, padding: '10px 40px 10px 11px', fontSize: 14, width: '100%', resize: 'vertical' }} autoFocus />
                 <button onClick={() => {
                   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
                   if (!SR) { setVoiceError("Voice input isn't supported in Safari — type instead."); return; }
@@ -2048,6 +2118,16 @@ const TRAINING_TYPES = [
   { key: 'Mixed', emoji: '🔀' },
 ];
 
+// Frequent Foods unit categories — each food gets one of these (AI-assigned), which determines
+// which units its picker offers. toBase = how many of the category's base unit one of this unit equals.
+const CATEGORY_UNITS = {
+  liquid: { baseUnit: 'tbsp', options: [{ unit: 'tbsp', toBase: 1 }, { unit: 'fl oz', toBase: 2 }, { unit: 'cup', toBase: 16 }] },
+  sliced: { baseUnit: 'slice', options: [{ unit: 'slice', toBase: 1 }] },
+  piece: { baseUnit: 'pc', options: [{ unit: 'pc', toBase: 1 }] },
+  weight: { baseUnit: 'oz', options: [{ unit: 'oz', toBase: 1 }, { unit: 'g', toBase: 1 / 28.35 }] },
+};
+const CATEGORY_LABELS = { liquid: 'Liquid / Sauce', sliced: 'Sliced', piece: 'Piece / Countable', weight: 'Weight-based' };
+
 const SEED_EXERCISES = [
   'Push-ups', 'Sit-ups', 'Crunches', 'Squats', 'Lunges', 'Planks', 'Pull-ups', 'Chin-ups', 'Dips', 'Burpees',
   'Bench Press', 'Incline Bench Press', 'Overhead Press', 'Dumbbell Bench Press', 'Dumbbell Shoulder Press', 'Tricep Extensions', 'Tricep Pushdowns',
@@ -2091,7 +2171,7 @@ function ExercisePickerModal({ exercises, onClose, onPick, onTogglePin, onDelete
               {e.count > 0 && <div style={{ fontSize: 11, color: MUTED }}>Logged {e.count}×</div>}
             </button>
             <button onClick={() => onViewHistory(e.name)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 11 }}>History</button>
-            <button onClick={() => onTogglePin(e.id)} style={{ background: 'none', border: 'none', color: e.pinned ? BURGUNDY : '#C9C6D1', fontSize: 15 }}>📌</button>
+            <button onClick={() => onTogglePin(e.id)} style={{ background: 'none', border: 'none', color: e.pinned ? LABEL : '#C9C6D1', fontSize: 15 }}>📌</button>
             <button onClick={() => onDelete(e.id)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 15 }}>✕</button>
           </div>
         ))}
@@ -2150,7 +2230,7 @@ function SetEntryModal({ exerciseName, profileWeight, initialSets, history, prof
       {sets.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
           {sets.map((s, i) => (
-            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#F6F1F2', borderRadius: 8, padding: '8px 12px' }}>
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--input-bg)', borderRadius: 8, padding: '8px 12px' }}>
               <span style={{ fontSize: 13.5, fontWeight: 600 }}>Set {i + 1}: {s.weight}lbs × {s.reps} reps</span>
               <button onClick={() => removeSet(i)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 14 }}>✕</button>
             </div>
@@ -2428,7 +2508,7 @@ function SettingsModal({ profile, onClose, onSave, onExport, onShowHome, onShowH
         <p style={{ fontSize: 12.5, color: MUTED, marginBottom: 16, lineHeight: 1.5 }}>Pick a level to refill your targets below — still editable before you save.</p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
           {LEVELS.map(level => (
-            <button key={level.num} onClick={() => { setT({ calories: level.calories, protein: level.protein, netCarbs: level.carbs, fat: level.fat, water: level.water }); setShowLevelPicker(false); }} style={{ background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 12, padding: '14px 8px', textAlign: 'center' }}>
+            <button key={level.num} onClick={() => { setT({ calories: level.calories, protein: level.protein, netCarbs: level.carbs, fat: level.fat, water: level.water }); setShowLevelPicker(false); }} style={{ background: 'var(--card-bg)', border: `1px solid ${BORDER}`, borderRadius: 12, padding: '14px 8px', textAlign: 'center' }}>
               <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, fontWeight: 700, color: LABEL, marginBottom: 4 }}>Level {level.num}</div>
               <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700 }}>{level.carbs}<span style={{ fontSize: 10, color: MUTED, fontWeight: 500, display: 'block' }}>g carbs</span></div>
             </button>
@@ -2441,7 +2521,7 @@ function SettingsModal({ profile, onClose, onSave, onExport, onShowHome, onShowH
 
   return (
     <Modal title="Settings" onClose={onClose}>
-      <div style={{ background: '#F6F1F2', borderRadius: 10, padding: '12px 14px', marginBottom: 18 }}>
+      <div style={{ background: 'var(--input-bg)', borderRadius: 10, padding: '12px 14px', marginBottom: 18 }}>
         <div style={{ fontSize: 12.5, fontWeight: 700, color: LABEL, marginBottom: 4 }}>Created by Carl Cooper and his AI assistant</div>
         <div style={{ fontSize: 11.5, color: MUTED, marginBottom: 6 }}>Suggestions, questions, or comments welcome:</div>
         <div style={{ fontSize: 11.5, color: TEXT }}>817-454-7267</div>
@@ -2481,7 +2561,7 @@ function SettingsModal({ profile, onClose, onSave, onExport, onShowHome, onShowH
       <button className="ghostbtn" onClick={onExport} style={{ width: '100%', justifyContent: 'center', padding: 12, marginBottom: 10 }}>⬇ Export Data (CSV)</button>
       <button className="ghostbtn" onClick={onShowHome} style={{ width: '100%', justifyContent: 'center', padding: 12 }}>📱 Add to Home Screen</button>
 
-      <div style={{ marginTop: 16, padding: '10px 12px', background: '#F6F1F2', borderRadius: 10, fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>Your data syncs automatically to the cloud, protected by your PIN.</div>
+      <div style={{ marginTop: 16, padding: '10px 12px', background: 'var(--input-bg)', borderRadius: 10, fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>Your data syncs automatically to the cloud, protected by your PIN.</div>
       <div style={{ marginTop: 10, fontSize: 10.5, color: MUTED, textAlign: 'center' }}>Build {BUILD_NUMBER} · Last synced: {lastSyncText}</div>
     </Modal>
   );
