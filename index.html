@@ -62,7 +62,7 @@ const MEALS = [
   { key: 'snacks', label: 'Snacks', emoji: '🍪' },
 ];
 
-const BUILD_NUMBER = 37;
+const BUILD_NUMBER = 38;
 const DEFAULT_TARGETS = { calories: 1800, protein: 90, netCarbs: 25, fat: 150, water: 100 };
 const LEVELS = [1, 2, 3].map((num, i) => {
   const carbs = [20, 50, 100][i];
@@ -80,6 +80,85 @@ const save = (key, value) => {
 };
 const DAY_KEY = (d) => `kt-day-${d}`;
 const EMPTY_DAY = { meals: { breakfast: [], lunch: [], dinner: [], snacks: [] }, workouts: [], water: 0 };
+
+// ---------- Duration helpers (MM:SS) ----------
+// Stored value is always decimal minutes (e.g. 32.75). The entry field accepts "32:45", "1:05:30" or plain minutes.
+const parseDuration = (v) => {
+  if (v === null || v === undefined) return 0;
+  const s = String(v).trim().replace(/;/g, ':');
+  if (!s) return 0;
+  if (s.includes(':')) {
+    const p = s.split(':').map(x => parseInt(x, 10) || 0);
+    if (p.length >= 3) return (p[0] * 3600 + p[1] * 60 + p[2]) / 60;
+    return (p[0] * 60 + p[1]) / 60;
+  }
+  return parseFloat(s) || 0;
+};
+const fmtDuration = (min) => {
+  const total = Math.round((Number(min) || 0) * 60);
+  if (!total) return '';
+  const m = Math.floor(total / 60), sec = total % 60;
+  return `${m}:${String(sec).padStart(2, '0')}`;
+};
+// compact label for history rows: whole minutes stay "32", otherwise "32:45"
+const durationLabel = (min) => {
+  const total = Math.round((Number(min) || 0) * 60);
+  const m = Math.floor(total / 60), sec = total % 60;
+  return sec === 0 ? String(m) : `${m}:${String(sec).padStart(2, '0')}`;
+};
+
+// ---------- Sunrise / sunset for a fixed North Texas location (Central time, no geolocation needed) ----------
+const SUN_LAT = 32.85, SUN_LNG = -97.08;
+const sunEventUT = (y, m, d, rising) => {
+  const rad = Math.PI / 180, zenith = 90.833;
+  const N1 = Math.floor(275 * m / 9), N2 = Math.floor((m + 9) / 12), N3 = 1 + Math.floor((y - 4 * Math.floor(y / 4) + 2) / 3);
+  const N = N1 - N2 * N3 + d - 30;
+  const lngHour = SUN_LNG / 15;
+  const t = N + ((rising ? 6 : 18) - lngHour) / 24;
+  const M = 0.9856 * t - 3.289;
+  let L = M + 1.916 * Math.sin(M * rad) + 0.020 * Math.sin(2 * M * rad) + 282.634;
+  L = ((L % 360) + 360) % 360;
+  let RA = Math.atan(0.91764 * Math.tan(L * rad)) / rad;
+  RA = ((RA % 360) + 360) % 360;
+  RA = (RA + (Math.floor(L / 90) * 90 - Math.floor(RA / 90) * 90)) / 15;
+  const sinDec = 0.39782 * Math.sin(L * rad), cosDec = Math.cos(Math.asin(sinDec));
+  const cosH = (Math.cos(zenith * rad) - sinDec * Math.sin(SUN_LAT * rad)) / (cosDec * Math.cos(SUN_LAT * rad));
+  if (cosH > 1 || cosH < -1) return null;
+  const H = (rising ? 360 - Math.acos(cosH) / rad : Math.acos(cosH) / rad) / 15;
+  const T = H + RA - 0.06571 * t - 6.622;
+  return (((T - lngHour) % 24) + 24) % 24;
+};
+const centralYMD = (ms) => {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: 'numeric', day: 'numeric' }).formatToParts(new Date(ms));
+  const get = (type) => parseInt(parts.find(p => p.type === type).value, 10);
+  return { y: get('year'), m: get('month'), d: get('day') };
+};
+const sunTimesAt = (ms) => {
+  const { y, m, d } = centralYMD(ms);
+  const riseUT = sunEventUT(y, m, d, true), setUT = sunEventUT(y, m, d, false);
+  if (riseUT === null || setUT === null) return null;
+  const base = Date.UTC(y, m - 1, d);
+  const sunrise = base + riseUT * 3600000;
+  let sunset = base + setUT * 3600000;
+  if (sunset < sunrise) sunset += 24 * 3600000;
+  return { sunrise, sunset };
+};
+const isDarkAt = (ms) => {
+  const t = sunTimesAt(ms);
+  if (!t) return false;
+  return ms < t.sunrise || ms > t.sunset;
+};
+
+// ---------- Vacation mode ----------
+const EMPTY_VACATION = { on: false, startDate: null, endDate: null, ranges: [] };
+const normalizeVacation = (v) => {
+  const base = { ...EMPTY_VACATION, ...(v || {}) };
+  if (!Array.isArray(base.ranges)) base.ranges = [];
+  if (base.on && base.endDate && todayISO() > base.endDate) {
+    return { on: false, startDate: null, endDate: null, ranges: [...base.ranges, { start: base.startDate, end: base.endDate }] };
+  }
+  return base;
+};
 
 // ---------- Cloud sync (device ID + key/value mirror of localStorage) ----------
 const DEVICE_ID_KEY = 'kt-device-id';
@@ -183,10 +262,10 @@ const effective = (f) => {
 };
 
 // ---------- UI atoms ----------
-function HydrationCard({ water, target, onAdd, gold }) {
+function HydrationCard({ water, target, onAdd, gold, neutral }) {
   const [val, setVal] = useState('');
   const [mode, setMode] = useState('add'); // 'add' | 'subtract'
-  const color = statColor(water, target, 'floor');
+  const color = neutral ? TEXT : statColor(water, target, 'floor');
   const submit = () => {
     const n = parseFloat(val);
     if (!n || n === 0) return;
@@ -236,8 +315,8 @@ function ConfettiOverlay() {
   );
 }
 
-function RowStat({ label, emoji, value, target, unit, kind, note, gold }) {
-  const color = statColor(value, target, kind);
+function RowStat({ label, emoji, value, target, unit, kind, note, gold, neutral }) {
+  const color = neutral ? TEXT : statColor(value, target, kind);
   const pct = Math.min(100, (value / target) * 100);
   return (
     <div className={gold ? 'card gold-card' : 'card'} style={{ border: `1px solid ${BORDER}`, borderRadius: 12, padding: '10px 8px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', flex: 1, minWidth: 0 }}>
@@ -249,7 +328,7 @@ function RowStat({ label, emoji, value, target, unit, kind, note, gold }) {
       <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 19, fontWeight: 700, color, lineHeight: 1 }}>{Math.round(value)}<span style={{ fontSize: 10, color: MUTED, fontWeight: 500 }}>{unit}</span></div>
       <div style={{ fontSize: 9.5, color: MUTED, marginTop: 2 }}>/ {target}{unit}</div>
       <div style={{ height: 4, background: TRACK_BG, borderRadius: 2, marginTop: 6, overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 2 }} />
+        <div style={{ height: '100%', width: `${pct}%`, background: neutral ? '#9A98A1' : color, borderRadius: 2 }} />
       </div>
       {note && <div style={{ fontSize: 9, color: MUTED, marginTop: 4 }}>{note}</div>}
     </div>
@@ -329,13 +408,16 @@ function CarbTrack() {
   const [loaded, setLoaded] = useState(false);
   const [pinStatus, setPinStatus] = useState('checking'); // 'checking' | 'need-setup' | 'need-verify' | 'unlocked'
   const [selectedDate, setSelectedDate] = useState(todayISO());
-  const swipeStartX = useRef(null);
-  const handleSwipeStart = (e) => { swipeStartX.current = e.touches[0].clientX; };
+  const swipeStart = useRef(null);
+  const handleSwipeStart = (e) => { const t = e.touches[0]; swipeStart.current = { x: t.clientX, y: t.clientY }; };
   const handleSwipeEnd = (e, onSwipeRight, onSwipeLeft) => {
-    if (swipeStartX.current === null) return;
-    const dx = e.changedTouches[0].clientX - swipeStartX.current;
-    swipeStartX.current = null;
-    if (Math.abs(dx) < 50) return; // ignore small taps/scrolls
+    const s = swipeStart.current;
+    swipeStart.current = null;
+    if (!s) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - s.x, dy = t.clientY - s.y;
+    if (Math.abs(dx) < 90) return; // needs a deliberate sideways swipe, not a tap or small drift
+    if (Math.abs(dx) < Math.abs(dy) * 2.5) return; // must be clearly more sideways than up/down, so normal scrolling never changes the day
     if (dx > 0 && onSwipeRight) onSwipeRight();
     else if (dx < 0 && onSwipeLeft) onSwipeLeft();
   };
@@ -398,6 +480,8 @@ function CarbTrack() {
   const [coachLoading, setCoachLoading] = useState(false);
   const [coachError, setCoachError] = useState(null);
   const [exceptionDaysState, setExceptionDaysState] = useState([]);
+  const [vacation, setVacation] = useState(EMPTY_VACATION);
+  const vacationActive = vacation.on && !(vacation.endDate && todayISO() > vacation.endDate);
   const [expandedMeals, setExpandedMeals] = useState({});
   const [trainingExpanded, setTrainingExpanded] = useState(false);
 
@@ -419,6 +503,30 @@ function CarbTrack() {
       setDismissed(load('kt-dismissed', {}));
       setExceptionDaysState(load('kt-exception-days', []));
       setMealTemplates(load('kt-meal-templates', []));
+      // Build 38: split the generic "Bicep Curls" into Dumbbell / Barbell. Existing history and PRs stay under Dumbbell Curls.
+      if (!load('kt-curls-split-b38', false)) {
+        try {
+          const lib = load('kt-exercise-library', null);
+          if (lib) {
+            const seen = new Set();
+            const renamed = lib.map(e => e.name === 'Bicep Curls' ? { ...e, name: 'Dumbbell Curls' } : e).filter(e => { if (seen.has(e.name)) return false; seen.add(e.name); return true; });
+            if (!seen.has('Dumbbell Curls')) renamed.push({ id: Date.now(), name: 'Dumbbell Curls', count: 0, pinned: false });
+            if (!seen.has('Barbell Curls')) renamed.push({ id: Date.now() + 1, name: 'Barbell Curls', count: 0, pinned: false });
+            save('kt-exercise-library', renamed);
+          }
+          const dayKeys = [];
+          for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith('kt-day-')) dayKeys.push(k); }
+          dayKeys.forEach(k => {
+            const day = load(k, null);
+            if (day && Array.isArray(day.workouts) && day.workouts.some(w => w.exerciseName === 'Bicep Curls')) {
+              save(k, { ...day, workouts: day.workouts.map(w => w.exerciseName === 'Bicep Curls' ? { ...w, exerciseName: 'Dumbbell Curls' } : w) });
+            }
+          });
+          save('kt-curls-split-b38', true);
+        } catch (e) { console.error('curls migration failed', e); }
+      }
+      const loadedVacation = normalizeVacation(load('kt-vacation', EMPTY_VACATION));
+      setVacation(loadedVacation);
       const existingLibrary = load('kt-exercise-library', null);
       if (existingLibrary === null) {
         const seeded = SEED_EXERCISES.map((name, i) => ({ id: Date.now() + i, name, count: 0, pinned: false }));
@@ -702,11 +810,26 @@ function CarbTrack() {
     persistExceptionDays(exceptionDays.includes(date) ? exceptionDays.filter(d => d !== date) : [...exceptionDays, date]);
   };
 
+  const vacationRanges = [...vacation.ranges, ...(vacation.on ? [{ start: vacation.startDate, end: vacation.endDate || '9999-12-31' }] : [])];
+  const isVacationDay = (d) => vacationRanges.some(r => r.start && d >= r.start && d <= r.end);
+  const persistVacation = (next) => { setVacation(next); save('kt-vacation', next); };
+  const setVacationMode = (on, endDate) => {
+    const cur = normalizeVacation(vacation);
+    if (on) {
+      persistVacation({ ...cur, on: true, startDate: cur.on && cur.startDate ? cur.startDate : todayISO(), endDate: endDate || null });
+    } else if (cur.on) {
+      persistVacation({ on: false, startDate: null, endDate: null, ranges: [...cur.ranges, { start: cur.startDate, end: todayISO() }] });
+    } else {
+      persistVacation(cur);
+    }
+  };
+
   const computeCategoryStreak = (getDayTotal, target, kind) => {
     let count = 0;
     for (let i = 1; i <= 90; i++) { // start at 1 (yesterday) — today's in-progress totals don't count toward the streak yet
       const d = iso(addDays(new Date(), -i));
       if (exceptionDays.includes(d)) continue; // planned exception day — skip, doesn't count as pass or break
+      if (isVacationDay(d)) continue; // vacation day: streaks pause here, they neither grow nor break
       const parsed = load(DAY_KEY(d), null);
       if (!parsed) break;
       const val = getDayTotal(parsed);
@@ -732,12 +855,12 @@ function CarbTrack() {
     fat: computeCategoryStreak(p => dayMacroTotals(p).fat, targets.fat, 'floor'),
     hydration: computeCategoryStreak(p => p.water || 0, targets.water, 'floor'),
     training: computeCategoryStreak(p => (p.workouts || []).length > 0, null, 'any'),
-  }), [dayData, targets]);
+  }), [dayData, targets, vacation]);
 
-  const goldCards = useMemo(() => ({
+  const goldCards = useMemo(() => vacationActive ? { protein: false, netCarbs: false, calories: false, fat: false, hydration: false, training: false } : ({
     protein: streaks.protein >= 7, netCarbs: streaks.netCarbs >= 7, calories: streaks.calories >= 7,
     fat: streaks.fat >= 7, hydration: streaks.hydration >= 7, training: streaks.training >= 7,
-  }), [streaks]);
+  }), [streaks, vacationActive]);
 
   const weightMilestoneLevel = (startWeight && latestWeight) ? Math.floor(Math.max(0, startWeight - latestWeight) / 5) : 0;
 
@@ -788,49 +911,12 @@ function CarbTrack() {
     if (!loaded) return;
     if (nightModeSetting === 'light') { setIsDarkNow(false); return; }
     if (nightModeSetting === 'dark') { setIsDarkNow(true); return; }
-
-    // auto: use cached sunrise/sunset for today if we have it, otherwise fetch (needs location permission)
-    const applyFromTimes = (sunriseISO, sunsetISO) => {
-      const now = Date.now();
-      const isDark = now < new Date(sunriseISO).getTime() || now > new Date(sunsetISO).getTime();
-      setIsDarkNow(isDark);
-    };
-
-    const cached = load('kt-daylight-cache', null);
-    const todayKey = todayISO();
-    if (cached && cached.date === todayKey) {
-      applyFromTimes(cached.sunrise, cached.sunset);
-      return;
-    }
-
-    if (!navigator.geolocation) return; // no geolocation support — leave in whatever mode it currently is
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        try {
-          const res = await fetch(`/api/daylight?lat=${pos.coords.latitude}&lng=${pos.coords.longitude}`);
-          const data = await res.json();
-          if (data.sunrise && data.sunset) {
-            save('kt-daylight-cache', { date: todayKey, sunrise: data.sunrise, sunset: data.sunset });
-            applyFromTimes(data.sunrise, data.sunset);
-          }
-        } catch (e) { /* offline or lookup failed — leave as-is */ }
-      },
-      () => { /* permission denied — leave as-is, user can still manually lock Light/Dark */ }
-    );
-  }, [loaded, nightModeSetting]);
-
-  // re-check every 15 minutes so the app updates live if it's kept open across sunset/sunrise
-  useEffect(() => {
-    if (nightModeSetting !== 'auto') return;
-    const interval = setInterval(() => {
-      const cached = load('kt-daylight-cache', null);
-      if (cached && cached.date === todayISO()) {
-        const now = Date.now();
-        setIsDarkNow(now < new Date(cached.sunrise).getTime() || now > new Date(cached.sunset).getTime());
-      }
-    }, 15 * 60 * 1000);
+    // auto: sunrise/sunset for North Texas in Central time, computed right here (no location permission, no network)
+    const update = () => setIsDarkNow(isDarkAt(Date.now()));
+    update();
+    const interval = setInterval(update, 5 * 60 * 1000); // re-check so it flips live across sunrise/sunset
     return () => clearInterval(interval);
-  }, [nightModeSetting]);
+  }, [loaded, nightModeSetting]);
 
   // ---------- Smart Coach: weekly AI recap ----------
   const getAllTrainingHistory = () => {
@@ -935,12 +1021,12 @@ function CarbTrack() {
     const isSunday = today.getDay() === 0;
     const weekKey = todayISO();
     const alreadyThisSession = (() => { try { return sessionStorage.getItem('kt-session-coachShownWeek') === weekKey; } catch (e) { return false; } })();
-    if (isSunday && dismissed.coachShownWeek !== weekKey && !alreadyThisSession) {
+    if (isSunday && !vacationActive && dismissed.coachShownWeek !== weekKey && !alreadyThisSession) {
       persistDismissed({ coachShownWeek: weekKey });
       try { sessionStorage.setItem('kt-session-coachShownWeek', weekKey); } catch (e) {}
       runSmartCoach();
     }
-  }, [loaded, profile]);
+  }, [loaded, profile, vacationActive]);
 
 
   const weekComparison = useMemo(() => {
@@ -1101,6 +1187,12 @@ function CarbTrack() {
           <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.85)' }}>Planned exception day {exceptionDays.includes(selectedDate) ? '(won\'t break streaks)' : ''}</span>
         </button>
 
+        {vacationActive && (
+          <button onClick={() => setShowSettings(true)} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 10, padding: '8px 12px', color: WHITE, fontSize: 12.5, fontWeight: 600, textAlign: 'left' }}>
+            🌴 Vacation Mode{vacation.endDate ? ` · until ${new Date(vacation.endDate + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric' })}` : ''} · tap to change
+          </button>
+        )}
+
         {dailyQuote && (
           <div className="card" style={{ padding: 14 }}>
             <div style={{
@@ -1117,17 +1209,17 @@ function CarbTrack() {
         )}
 
         <div style={{ display: 'flex', gap: 6 }}>
-          <RowStat label="Protein" emoji="🥩" value={totals.protein} target={targets.protein} unit="g" kind="floor" gold={goldCards.protein}
+          <RowStat label="Protein" emoji="🥩" value={totals.protein} target={targets.protein} unit="g" kind="floor" gold={goldCards.protein} neutral={vacationActive}
             note={[streaks.protein > 1 ? `🔥${streaks.protein}d` : null, weekComparison !== null && weekComparison !== 0 ? `${weekComparison > 0 ? '↑' : '↓'}${Math.abs(weekComparison)}g wk` : null].filter(Boolean).join(' · ') || null} />
-          <RowStat label="Net Carbs" emoji="🌾" value={totals.netCarbs} target={targets.netCarbs} unit="g" kind="ceiling" gold={goldCards.netCarbs}
+          <RowStat label="Net Carbs" emoji="🌾" value={totals.netCarbs} target={targets.netCarbs} unit="g" kind="ceiling" gold={goldCards.netCarbs} neutral={vacationActive}
             note={streaks.netCarbs > 1 ? `🔥${streaks.netCarbs}d` : null} />
-          <RowStat label="Calories" emoji="🔥" value={netCalories} target={targets.calories} unit="" kind="ceiling" gold={goldCards.calories}
+          <RowStat label="Calories" emoji="🔥" value={netCalories} target={targets.calories} unit="" kind="ceiling" gold={goldCards.calories} neutral={vacationActive}
             note={[caloriesBurned > 0 ? `-${Math.round(caloriesBurned)} burned` : null, streaks.calories > 1 ? `🔥${streaks.calories}d` : null].filter(Boolean).join(' · ') || null} />
-          <RowStat label="Fat" emoji="💧" value={totals.fat} target={targets.fat} unit="g" kind="floor" gold={goldCards.fat}
+          <RowStat label="Fat" emoji="💧" value={totals.fat} target={targets.fat} unit="g" kind="floor" gold={goldCards.fat} neutral={vacationActive}
             note={streaks.fat > 1 ? `🔥${streaks.fat}d` : null} />
         </div>
 
-        <HydrationCard water={dayData.water} target={targets.water} onAdd={addWater} gold={goldCards.hydration} />
+        <HydrationCard water={dayData.water} target={targets.water} onAdd={addWater} gold={goldCards.hydration} neutral={vacationActive} />
 
         <button onClick={() => setShowRegulars(true)} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: `1px solid ${BORDER}`, width: '100%', textAlign: 'left' }}>
           <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: LABEL, fontWeight: 600 }}>⭐ Frequent Foods</span>
@@ -1230,14 +1322,14 @@ function CarbTrack() {
               {dayData.workouts.length === 0 ? <div style={{ color: MUTED, fontSize: 13 }}>No sessions logged.</div> : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {dayData.workouts.map(w => {
-                    const pace = w.distance && w.duration ? (w.duration / w.distance).toFixed(1) : null;
+                    const pace = w.distance && w.duration ? fmtDuration(w.duration / w.distance) : null;
                     return (
                       <div key={w.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: `1px solid ${BORDER}` }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <span>🏋</span>
                           <div>
                             <div style={{ fontSize: 14, fontWeight: 500 }}>{w.exerciseName || w.type}</div>
-                            <div style={{ fontSize: 11.5, color: MUTED }}>{w.sets ? w.sets.map(s => `${s.weight}×${s.reps}`).join(', ') : ''}{w.duration ? ` · ${w.duration} min` : ''}{w.distance ? ` · ${w.distance} mi` : ''}{pace ? ` · ${pace} min/mi` : ''}{w.avgSpeed ? ` · ${w.avgSpeed} mph` : ''}{w.cadence ? ` · ${w.cadence} rpm` : ''}{!w.sets && w.weightLifted ? ` · ${w.weightLifted} lbs` : ''}{!w.sets && w.reps ? ` × ${w.reps} reps` : ''}{w.activeCalories ? ` · ${w.activeCalories} cal` : ''}{w.avgHeartRate ? ` · ${w.avgHeartRate} bpm avg` : ''}</div>
+                            <div style={{ fontSize: 11.5, color: MUTED }}>{w.sets ? w.sets.map(s => `${s.weight}×${s.reps}`).join(', ') : ''}{w.duration ? ` · ${durationLabel(w.duration)} min` : ''}{w.distance ? ` · ${w.distance} mi` : ''}{pace ? ` · ${pace} min/mi` : ''}{w.avgSpeed ? ` · ${w.avgSpeed} mph` : ''}{w.cadence ? ` · ${w.cadence} rpm` : ''}{!w.sets && w.weightLifted ? ` · ${w.weightLifted} lbs` : ''}{!w.sets && w.reps ? ` × ${w.reps} reps` : ''}{w.activeCalories ? ` · ${w.activeCalories} cal` : ''}{w.avgHeartRate ? ` · ${w.avgHeartRate} bpm avg` : ''}</div>
                             {w.notes && <div style={{ fontSize: 11.5, color: MUTED }}>{w.notes}</div>}
                           </div>
                         </div>
@@ -1268,7 +1360,7 @@ function CarbTrack() {
       {pickMealFor && <MealPickerModal item={pickMealFor} onClose={() => setPickMealFor(null)} onPick={(mealKey) => logRegularsToMeal(pickMealFor, mealKey)} />}
       {showTrainingHistory && (
         <EntryHistoryModal title="Training History" entries={getAllTrainingHistory()} onClose={() => setShowTrainingHistory(false)}
-          renderRow={w => `${w.exerciseName || w.type}${w.sets ? ' · ' + w.sets.map(s => `${s.weight}×${s.reps}`).join(', ') : ''}${w.duration ? ` · ${w.duration}min` : ''}${!w.sets && w.weightLifted ? ` · ${w.weightLifted}lbs×${w.reps || '?'}` : ''}${w.activeCalories ? ` · ${w.activeCalories}cal` : ''}`} />
+          renderRow={w => `${w.exerciseName || w.type}${w.sets ? ' · ' + w.sets.map(s => `${s.weight}×${s.reps}`).join(', ') : ''}${w.duration ? ` · ${durationLabel(w.duration)}min` : ''}${!w.sets && w.weightLifted ? ` · ${w.weightLifted}lbs×${w.reps || '?'}` : ''}${w.activeCalories ? ` · ${w.activeCalories}cal` : ''}`} />
       )}
       {showTemplates && (
         <Modal title="📋 Meal Templates" onClose={() => setShowTemplates(false)}>
@@ -1329,7 +1421,7 @@ function CarbTrack() {
       {showSettings && <SettingsModal profile={profile} onClose={() => setShowSettings(false)} onSave={(p) => { save('kt-profile', p); setProfile(p); setShowSettings(false); }}
         onExport={exportCSV} onShowHome={() => { setShowSettings(false); setShowHome(true); }} onShowHistory={() => { setShowSettings(false); setShowHistory(true); }}
         onShowCoach={() => { setShowSettings(false); runSmartCoach(); }} onReconnect={() => { setShowSettings(false); setShowReconnect(true); }}
-        nightModeSetting={nightModeSetting} onSetNightMode={persistNightMode} />}
+        nightModeSetting={nightModeSetting} onSetNightMode={persistNightMode} vacation={vacation} vacationActive={vacationActive} onSetVacation={setVacationMode} />}
       {showHistory && <HistoryModal targets={targets} weightLog={weightLog} onClose={() => setShowHistory(false)} />}
       {showWeightHistory && <EntryHistoryModal title="Weight History" entries={weightLog} onClose={() => setShowWeightHistory(false)} renderRow={e => `${e.weight} lbs`} />}
       {showBpHistory && <EntryHistoryModal title="Blood Pressure History" entries={bpLog} onClose={() => setShowBpHistory(false)} renderRow={e => `${e.systolic}/${e.diastolic}${e.pulse ? ' · ♥' + e.pulse : ''}`} />}
@@ -1636,6 +1728,8 @@ function RegularsList({ regulars, remaining, onEdit, onDelete, onTogglePin, onBa
   const [qtyPromptFor, setQtyPromptFor] = useState(null); // regular awaiting a unit/quantity entry
   const [whatFits, setWhatFits] = useState(false);
   const [cleanupMsg, setCleanupMsg] = useState(null);
+  const [search, setSearch] = useState('');
+  const q = search.trim().toLowerCase();
 
   const tapItem = (r) => {
     if (cart[r.id] !== undefined) {
@@ -1655,7 +1749,7 @@ function RegularsList({ regulars, remaining, onEdit, onDelete, onTogglePin, onBa
     const netC = Math.max(0, r.carbs - r.fiber);
     return netC <= remaining.netCarbs && r.calories <= remaining.calories;
   };
-  const visible = regulars.filter(fits);
+  const visible = regulars.filter(fits).filter(r => !q || String(r.name || '').toLowerCase().includes(q));
 
   const groups = {};
   visible.forEach(r => { const key = r.restaurant || 'Other'; (groups[key] = groups[key] || []).push(r); });
@@ -1691,6 +1785,10 @@ function RegularsList({ regulars, remaining, onEdit, onDelete, onTogglePin, onBa
 
   return (
     <div>
+      <div style={{ position: 'relative', marginBottom: 10 }}>
+        <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search frequent foods" autoCapitalize="off" autoCorrect="off" style={{ paddingRight: 36 }} />
+        {search && <button onClick={() => setSearch('')} aria-label="Clear search" style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: MUTED, fontSize: 18, padding: '4px 8px', lineHeight: 1 }}>✕</button>}
+      </div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
         <button onClick={() => setWhatFits(!whatFits)} style={{ flex: 1, padding: 8, borderRadius: 8, border: `1.5px solid ${whatFits ? BURGUNDY : BORDER}`, background: whatFits ? 'var(--track-bg)' : 'var(--input-bg)', color: whatFits ? LABEL : MUTED, fontWeight: 600, fontSize: 12 }}>{whatFits ? 'Showing what fits' : 'What fits?'}</button>
         <button onClick={runCleanup} style={{ padding: '8px 12px', borderRadius: 8, border: `1.5px solid ${BORDER}`, background: 'var(--input-bg)', color: MUTED, fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap' }}>Clean Up</button>
@@ -1698,7 +1796,7 @@ function RegularsList({ regulars, remaining, onEdit, onDelete, onTogglePin, onBa
       {cleanupMsg && <div style={{ fontSize: 12, color: '#2E7D32', marginBottom: 10 }}>{cleanupMsg}</div>}
 
       {visible.length === 0 ? (
-        <div style={{ color: MUTED, fontSize: 13 }}>{regulars.length === 0 ? "Log a few foods and they'll show up here for quick re-adding." : "Nothing fits your remaining macros right now."}</div>
+        <div style={{ color: MUTED, fontSize: 13 }}>{regulars.length === 0 ? "Log a few foods and they'll show up here for quick re-adding." : (q ? "No matches." : "Nothing fits your remaining macros right now.")}</div>
       ) : (
         groupKeys.map(gk => (
           <div key={gk || 'all'} style={{ marginBottom: hasRestaurants ? 14 : 0 }}>
@@ -2131,7 +2229,7 @@ const CATEGORY_LABELS = { liquid: 'Liquid / Sauce', sliced: 'Sliced', piece: 'Pi
 const SEED_EXERCISES = [
   'Push-ups', 'Sit-ups', 'Crunches', 'Squats', 'Lunges', 'Planks', 'Pull-ups', 'Chin-ups', 'Dips', 'Burpees',
   'Bench Press', 'Incline Bench Press', 'Overhead Press', 'Dumbbell Bench Press', 'Dumbbell Shoulder Press', 'Tricep Extensions', 'Tricep Pushdowns',
-  'Deadlift', 'Barbell Row', 'Dumbbell Row', 'Lat Pulldown', 'Bicep Curls', 'Hammer Curls', 'Face Pulls',
+  'Deadlift', 'Barbell Row', 'Dumbbell Row', 'Lat Pulldown', 'Dumbbell Curls', 'Barbell Curls', 'Hammer Curls', 'Face Pulls',
   'Back Squat', 'Front Squat', 'Leg Press', 'Romanian Deadlift', 'Leg Curls', 'Leg Extensions', 'Calf Raises', 'Hip Thrusts',
   'Russian Twists', 'Leg Raises', 'Mountain Climbers', 'Kettlebell Swings', "Farmer's Carry",
 ];
@@ -2292,7 +2390,7 @@ function WorkoutAiModal({ initialType, onClose, onSave }) {
         else setError(data.message || 'Could not read that screen. Try again or log manually.');
         setLoading(false); return;
       }
-      setResult({ type: initialType || data.type || 'Cardio', duration: data.duration || '', distance: data.distance || '', activeCalories: data.activeCalories || '', avgHeartRate: data.avgHeartRate || '', avgSpeed: data.avgSpeed || '', cadence: data.cadence || '' });
+      setResult({ type: initialType || data.type || 'Cardio', duration: data.duration ? (typeof data.duration === 'string' ? data.duration : fmtDuration(data.duration)) : '', distance: data.distance || '', activeCalories: data.activeCalories || '', avgHeartRate: data.avgHeartRate || '', avgSpeed: data.avgSpeed || '', cadence: data.cadence || '' });
     } catch (e) {
       setError('Could not reach the AI estimator. Check your connection and try again.');
     }
@@ -2300,7 +2398,7 @@ function WorkoutAiModal({ initialType, onClose, onSave }) {
   };
 
   const confirmAdd = () => {
-    onSave({ type: result.type, duration: num(result.duration), distance: num(result.distance), activeCalories: num(result.activeCalories), avgHeartRate: num(result.avgHeartRate), avgSpeed: num(result.avgSpeed), cadence: num(result.cadence), notes: '' });
+    onSave({ type: result.type, duration: parseDuration(result.duration), distance: num(result.distance), activeCalories: num(result.activeCalories), avgHeartRate: num(result.avgHeartRate), avgSpeed: num(result.avgSpeed), cadence: num(result.cadence), notes: '' });
   };
 
   return (
@@ -2321,7 +2419,7 @@ function WorkoutAiModal({ initialType, onClose, onSave }) {
             <select value={result.type} onChange={e => setResult({ ...result, type: e.target.value })}><option>Strength</option><option>Cardio</option><option>Walk</option><option>Cycling</option><option>Mobility</option><option>Mixed</option></select>
           </Field>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <Field label="Duration (min)"><input type="number" value={result.duration} onChange={e => setResult({ ...result, duration: e.target.value })} /></Field>
+            <Field label="Duration (MM:SS)"><input type="text" inputMode="text" autoCapitalize="off" autoCorrect="off" placeholder="32:45" value={result.duration} onChange={e => setResult({ ...result, duration: e.target.value.replace(/[^0-9:.;]/g, '') })} /></Field>
             {(result.type === 'Walk' || result.type === 'Cardio' || result.type === 'Cycling' || result.type === 'Mixed') && <Field label="Distance (mi)"><input type="number" inputMode="decimal" value={result.distance} onChange={e => setResult({ ...result, distance: e.target.value })} /></Field>}
             <Field label="Active calories"><input type="number" value={result.activeCalories} onChange={e => setResult({ ...result, activeCalories: e.target.value })} /></Field>
             <Field label="Avg heart rate"><input type="number" value={result.avgHeartRate} onChange={e => setResult({ ...result, avgHeartRate: e.target.value })} /></Field>
@@ -2360,14 +2458,15 @@ function WorkoutModal({ initialType, profileWeight, history, profileContext, onC
   }, []);
 
   const submit = () => {
-    if (!w.duration) return;
+    const durationMin = parseDuration(w.duration);
+    if (!durationMin) return;
     let activeCalories = num(w.activeCalories) || null;
     if (!activeCalories && isStrength && profileWeight) {
       const kg = profileWeight * 0.4536;
-      activeCalories = Math.round(6 * kg * (num(w.duration) / 60)); // MET 6 (vigorous lifting)
+      activeCalories = Math.round(6 * kg * (durationMin / 60)); // MET 6 (vigorous lifting)
     }
     onSave({
-      type: w.type, duration: num(w.duration), notes: w.notes,
+      type: w.type, duration: durationMin, notes: w.notes,
       distance: (isCardioLike || isCycling || isMixed) ? (num(w.distance) || null) : null,
       weightLifted: (isStrength || isMixed) ? (num(w.weightLifted) || null) : null,
       reps: (isStrength || isMixed) ? (num(w.reps) || null) : null,
@@ -2385,7 +2484,9 @@ function WorkoutModal({ initialType, profileWeight, history, profileContext, onC
       )}
       <Field label="Type"><select value={w.type} onChange={e => setW({ ...w, type: e.target.value })}><option>Strength</option><option>Cardio</option><option>Walk</option><option>Cycling</option><option>Mobility</option><option>Mixed</option></select></Field>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        <Field label="Duration (min)"><input type="number" value={w.duration} onChange={e => setW({ ...w, duration: e.target.value })} /></Field>
+        {isStrength
+          ? <Field label="Duration (min)"><input type="number" value={w.duration} onChange={e => setW({ ...w, duration: e.target.value })} /></Field>
+          : <Field label="Duration (MM:SS)"><input type="text" inputMode="text" autoCapitalize="off" autoCorrect="off" placeholder="32:45" value={w.duration} onChange={e => setW({ ...w, duration: e.target.value.replace(/[^0-9:.;]/g, '') })} /></Field>}
         {(isCardioLike || isCycling || isMixed) && <Field label="Distance (mi)"><input type="number" inputMode="decimal" value={w.distance} onChange={e => setW({ ...w, distance: e.target.value })} placeholder="optional" /></Field>}
         {(isCycling || isMixed) && (
           <>
@@ -2492,7 +2593,8 @@ function SleepModal({ initial, forDate, onClose, onSave }) {
   );
 }
 
-function SettingsModal({ profile, onClose, onSave, onExport, onShowHome, onShowHistory, onShowCoach, onReconnect, nightModeSetting, onSetNightMode }) {
+function SettingsModal({ profile, onClose, onSave, onExport, onShowHome, onShowHistory, onShowCoach, onReconnect, nightModeSetting, onSetNightMode, vacation, vacationActive, onSetVacation }) {
+  const [vacEnd, setVacEnd] = useState((vacation && vacation.endDate) || '');
   const [t, setT] = useState(profile.targets);
   const [goalWeight, setGoalWeight] = useState(profile.goalWeight);
   const [showLevelPicker, setShowLevelPicker] = useState(false);
@@ -2528,12 +2630,24 @@ function SettingsModal({ profile, onClose, onSave, onExport, onShowHome, onShowH
         <div style={{ fontSize: 11.5, color: TEXT }}>carlcooper@lynchlegacyexp.com</div>
       </div>
 
+      <div style={{ fontSize: 12, fontWeight: 600, color: LABEL, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>Vacation Mode</div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+        {[['off', false], ['on', true]].map(([opt, isOn]) => (
+          <button key={opt} onClick={() => onSetVacation(isOn, isOn ? vacEnd : null)} style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: `1.5px solid ${vacationActive === isOn ? BURGUNDY : BORDER}`, background: vacationActive === isOn ? BURGUNDY : 'transparent', color: vacationActive === isOn ? WHITE : TEXT, fontWeight: 600, fontSize: 12.5, textTransform: 'capitalize' }}>{opt}</button>
+        ))}
+      </div>
+      {vacationActive && (
+        <Field label="Ends on (optional)"><input type="date" value={vacEnd} min={todayISO()} onChange={e => { setVacEnd(e.target.value); onSetVacation(true, e.target.value); }} /></Field>
+      )}
+      <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5, marginBottom: 18 }}>Pauses your streaks, turns off the red and gold card colors, and skips the Sunday Smart Coach recap. Weekly comparison, averages and weight projections keep running as normal.</div>
+
       <div style={{ fontSize: 12, fontWeight: 600, color: LABEL, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>Night Mode</div>
-      <div style={{ display: 'flex', gap: 6, marginBottom: 18 }}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
         {['auto', 'light', 'dark'].map(opt => (
           <button key={opt} onClick={() => onSetNightMode(opt)} style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: `1.5px solid ${nightModeSetting === opt ? BURGUNDY : BORDER}`, background: nightModeSetting === opt ? BURGUNDY : 'transparent', color: nightModeSetting === opt ? WHITE : TEXT, fontWeight: 600, fontSize: 12.5, textTransform: 'capitalize' }}>{opt}</button>
         ))}
       </div>
+      <div style={{ fontSize: 11.5, color: MUTED, marginBottom: 18 }}>Auto follows sunrise and sunset in Central time.</div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: LABEL, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Daily Targets</div>
