@@ -1,0 +1,2826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>CarbTrack</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 fill=%22%233A3A3D%22/><polygon points=%2250,25 75,75 25,75%22 fill=%22%237A1F2B%22/></svg>" />
+<link rel="apple-touch-icon" href="/icon.png" />
+<meta name="theme-color" content="#1B5E3C" />
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+  * { box-sizing: border-box; margin:0; padding:0; }
+  body { font-family: 'Inter', sans-serif; }
+  button { font-family: inherit; cursor: pointer; }
+  input, select, textarea { font-family: inherit; background: var(--input-bg); border: 1px solid var(--border-color); color: var(--text-color); border-radius: 8px; padding: 10px 11px; font-size: 14px; width: 100%; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: #7A1F2B; }
+  ::placeholder { color: #A6A3AD; }
+  .card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 14px; padding: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .pill { background: #7A1F2B; border: none; border-radius: 20px; padding: 7px 14px; color: #FFFFFF; display: flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; }
+  .ghostbtn { background: #F6F1F2; border: 1px solid #E9E7ED; border-radius: 8px; padding: 7px 10px; color: #7A1F2B; display: flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; }
+  .banner { background: #FDF2E9; border: 1px solid #F2D9BC; border-radius: 12px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .card { transition: background 2.2s ease, border-color 2.2s ease; }
+  .gold-card { background: linear-gradient(135deg, #FFD700, #C9971A) !important; border-color: #8A6D1D !important; box-shadow: 0 0 0 1.5px #8A6D1D, 0 4px 12px rgba(138,109,29,0.4) !important; }
+
+  /* Night mode theme variables — light defaults, dark overrides */
+  :root { --card-bg: #FFFFFF; --text-color: #1F2024; --muted-color: #6B7280; --border-color: #E9E7ED; --track-bg: #F1EFF1; --input-bg: #FAFAFB; --label-color: #3A3A3D; }
+  .dark-mode { --card-bg: #22262A; --text-color: #E8E6E3; --muted-color: #9CA3AF; --border-color: #3A3F44; --track-bg: #2E3338; --input-bg: #2E3338; --label-color: #D9D6DA; }
+  .dark-mode .ghostbtn { background: var(--input-bg); }
+  .dark-mode .banner { background: var(--input-bg); }
+  .confetti-piece { position: fixed; top: -20px; width: 8px; height: 14px; opacity: 0.9; z-index: 999; animation: confetti-fall linear forwards; }
+  @keyframes confetti-fall {
+    0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+    100% { transform: translateY(110vh) rotate(540deg); opacity: 0.9; }
+  }
+</style>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js" crossorigin></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/plain" id="app-source">
+const { useState, useEffect, useMemo, useRef } = React;
+
+// ---------- Tokens ----------
+const GRAY = '#1B5E3C';
+const BURGUNDY = '#3A3A3D';
+const LABEL = 'var(--label-color)'; // for card section labels (text), which need to flip in Night Mode — BURGUNDY itself stays literal for its button-background uses
+const WHITE = '#FFFFFF';
+const TEXT = 'var(--text-color)';
+const MUTED = 'var(--muted-color)';
+const BORDER = 'var(--border-color)';
+const BLUE = '#2563EB';
+const RED = '#E11D2E';
+const TRACK_BG = 'var(--track-bg)';
+const MANUAL_GRAY = '#5F6368';
+
+const MEALS = [
+  { key: 'breakfast', label: 'Breakfast', emoji: '☕' },
+  { key: 'lunch', label: 'Lunch', emoji: '🥪' },
+  { key: 'dinner', label: 'Dinner', emoji: '🍽️' },
+  { key: 'snacks', label: 'Snacks', emoji: '🍪' },
+];
+
+const BUILD_NUMBER = 38;
+const DEFAULT_TARGETS = { calories: 1800, protein: 90, netCarbs: 25, fat: 150, water: 100 };
+const LEVELS = [1, 2, 3].map((num, i) => {
+  const carbs = [20, 50, 100][i];
+  const calories = 1800, protein = 90;
+  const fat = Math.round((calories - protein * 4 - carbs * 4) / 9);
+  return { num, carbs, calories, protein, fat, water: 100 };
+});
+
+const load = (key, fallback) => {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+  catch (e) { return fallback; }
+};
+const save = (key, value) => {
+  try { localStorage.setItem(key, JSON.stringify(value)); queueSyncOp(key, JSON.stringify(value), false); } catch (e) { console.error('save failed', e); }
+};
+const DAY_KEY = (d) => `kt-day-${d}`;
+const EMPTY_DAY = { meals: { breakfast: [], lunch: [], dinner: [], snacks: [] }, workouts: [], water: 0 };
+
+// ---------- Duration helpers (MM:SS) ----------
+// Stored value is always decimal minutes (e.g. 32.75). The entry field accepts "32:45", "1:05:30" or plain minutes.
+const parseDuration = (v) => {
+  if (v === null || v === undefined) return 0;
+  const s = String(v).trim().replace(/;/g, ':');
+  if (!s) return 0;
+  if (s.includes(':')) {
+    const p = s.split(':').map(x => parseInt(x, 10) || 0);
+    if (p.length >= 3) return (p[0] * 3600 + p[1] * 60 + p[2]) / 60;
+    return (p[0] * 60 + p[1]) / 60;
+  }
+  return parseFloat(s) || 0;
+};
+const fmtDuration = (min) => {
+  const total = Math.round((Number(min) || 0) * 60);
+  if (!total) return '';
+  const m = Math.floor(total / 60), sec = total % 60;
+  return `${m}:${String(sec).padStart(2, '0')}`;
+};
+// compact label for history rows: whole minutes stay "32", otherwise "32:45"
+const durationLabel = (min) => {
+  const total = Math.round((Number(min) || 0) * 60);
+  const m = Math.floor(total / 60), sec = total % 60;
+  return sec === 0 ? String(m) : `${m}:${String(sec).padStart(2, '0')}`;
+};
+
+// ---------- Sunrise / sunset for a fixed North Texas location (Central time, no geolocation needed) ----------
+const SUN_LAT = 32.85, SUN_LNG = -97.08;
+const sunEventUT = (y, m, d, rising) => {
+  const rad = Math.PI / 180, zenith = 90.833;
+  const N1 = Math.floor(275 * m / 9), N2 = Math.floor((m + 9) / 12), N3 = 1 + Math.floor((y - 4 * Math.floor(y / 4) + 2) / 3);
+  const N = N1 - N2 * N3 + d - 30;
+  const lngHour = SUN_LNG / 15;
+  const t = N + ((rising ? 6 : 18) - lngHour) / 24;
+  const M = 0.9856 * t - 3.289;
+  let L = M + 1.916 * Math.sin(M * rad) + 0.020 * Math.sin(2 * M * rad) + 282.634;
+  L = ((L % 360) + 360) % 360;
+  let RA = Math.atan(0.91764 * Math.tan(L * rad)) / rad;
+  RA = ((RA % 360) + 360) % 360;
+  RA = (RA + (Math.floor(L / 90) * 90 - Math.floor(RA / 90) * 90)) / 15;
+  const sinDec = 0.39782 * Math.sin(L * rad), cosDec = Math.cos(Math.asin(sinDec));
+  const cosH = (Math.cos(zenith * rad) - sinDec * Math.sin(SUN_LAT * rad)) / (cosDec * Math.cos(SUN_LAT * rad));
+  if (cosH > 1 || cosH < -1) return null;
+  const H = (rising ? 360 - Math.acos(cosH) / rad : Math.acos(cosH) / rad) / 15;
+  const T = H + RA - 0.06571 * t - 6.622;
+  return (((T - lngHour) % 24) + 24) % 24;
+};
+const centralYMD = (ms) => {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: 'numeric', day: 'numeric' }).formatToParts(new Date(ms));
+  const get = (type) => parseInt(parts.find(p => p.type === type).value, 10);
+  return { y: get('year'), m: get('month'), d: get('day') };
+};
+const sunTimesAt = (ms) => {
+  const { y, m, d } = centralYMD(ms);
+  const riseUT = sunEventUT(y, m, d, true), setUT = sunEventUT(y, m, d, false);
+  if (riseUT === null || setUT === null) return null;
+  const base = Date.UTC(y, m - 1, d);
+  const sunrise = base + riseUT * 3600000;
+  let sunset = base + setUT * 3600000;
+  if (sunset < sunrise) sunset += 24 * 3600000;
+  return { sunrise, sunset };
+};
+const isDarkAt = (ms) => {
+  const t = sunTimesAt(ms);
+  if (!t) return false;
+  return ms < t.sunrise || ms > t.sunset;
+};
+
+// ---------- Vacation mode ----------
+const EMPTY_VACATION = { on: false, startDate: null, endDate: null, ranges: [] };
+const normalizeVacation = (v) => {
+  const base = { ...EMPTY_VACATION, ...(v || {}) };
+  if (!Array.isArray(base.ranges)) base.ranges = [];
+  if (base.on && base.endDate && todayISO() > base.endDate) {
+    return { on: false, startDate: null, endDate: null, ranges: [...base.ranges, { start: base.startDate, end: base.endDate }] };
+  }
+  return base;
+};
+
+// ---------- Cloud sync (device ID + key/value mirror of localStorage) ----------
+const DEVICE_ID_KEY = 'kt-device-id';
+const getDeviceId = () => {
+  let id;
+  try { id = localStorage.getItem(DEVICE_ID_KEY); } catch (e) { id = null; }
+  if (!id) {
+    id = (window.crypto && window.crypto.randomUUID) ? window.crypto.randomUUID() : ('dev-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+    try { localStorage.setItem(DEVICE_ID_KEY, id); } catch (e) {}
+  }
+  return id;
+};
+
+const SYNC_QUEUE_KEY = 'kt-sync-queue';
+let syncPushTimer = null;
+
+// Local-only UI preference state — never synced to the cloud, so a stale cloud copy can never
+// silently un-dismiss a banner or reset a local-only flag on this or another device.
+const LOCAL_ONLY_KEYS = ['kt-dismissed'];
+
+const queueSyncOp = (key, value, deleted) => {
+  if (key === SYNC_QUEUE_KEY || key === DEVICE_ID_KEY || LOCAL_ONLY_KEYS.includes(key)) return;
+  try {
+    const queue = JSON.parse(localStorage.getItem(SYNC_QUEUE_KEY) || '{}');
+    queue[key] = { key, value: deleted ? null : value, deleted: !!deleted, updatedAt: Date.now() };
+    localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(queue));
+  } catch (e) {}
+  if (syncPushTimer) clearTimeout(syncPushTimer);
+  syncPushTimer = setTimeout(flushSyncQueue, 1500);
+};
+
+const LAST_SYNC_KEY = 'kt-last-sync';
+const flushSyncQueue = async () => {
+  let queue;
+  try { queue = JSON.parse(localStorage.getItem(SYNC_QUEUE_KEY) || '{}'); } catch (e) { queue = {}; }
+  const ops = Object.values(queue);
+  if (ops.length === 0) return;
+  try {
+    const deviceId = getDeviceId();
+    const res = await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deviceId, ops }) });
+    if (res.ok) { localStorage.setItem(SYNC_QUEUE_KEY, '{}'); localStorage.setItem(LAST_SYNC_KEY, String(Date.now())); }
+  } catch (e) { /* offline — queue stays for next flush attempt */ }
+};
+
+const pullFromCloud = async () => {
+  try {
+    const deviceId = getDeviceId();
+    const res = await fetch('/api/sync?deviceId=' + encodeURIComponent(deviceId));
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) { return null; }
+};
+
+// One-time reconciliation on app start: if the cloud already has data for this device, it's the
+// source of truth (pulled down into localStorage). If the cloud is empty, this is the first sync —
+// push every existing local kt- key up as the initial migration.
+const reconcileWithCloud = async () => {
+  const cloud = await pullFromCloud();
+  if (cloud === null) return 'offline'; // couldn't reach the backend — work from local storage as-is
+  localStorage.setItem(LAST_SYNC_KEY, String(Date.now()));
+  const cloudKeys = Object.keys(cloud.data || {}).filter(k => !LOCAL_ONLY_KEYS.includes(k));
+  if (cloudKeys.length > 0) {
+    cloudKeys.forEach(k => { try { localStorage.setItem(k, cloud.data[k]); } catch (e) {} });
+    return 'pulled';
+  }
+  // cloud empty — migrate every existing local key up
+  const ops = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith('kt-') && k !== DEVICE_ID_KEY && k !== SYNC_QUEUE_KEY && !LOCAL_ONLY_KEYS.includes(k)) {
+      ops.push({ key: k, value: localStorage.getItem(k), deleted: false, updatedAt: Date.now() });
+    }
+  }
+  if (ops.length > 0) {
+    try {
+      const deviceId = getDeviceId();
+      await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deviceId, ops }) });
+    } catch (e) {}
+  }
+  return 'migrated';
+};
+
+const iso = (d) => {
+  const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+const todayISO = () => iso(new Date());
+const startOfWeek = (dateISO) => { const d = new Date(dateISO + 'T00:00:00'); d.setDate(d.getDate() - d.getDay()); return d; };
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const dayLabel = (d) => ['S', 'M', 'T', 'W', 'T', 'F', 'S'][d.getDay()];
+const fmtHeader = (dateISO) => new Date(dateISO + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+const monthKey = (dateISO) => dateISO.slice(0, 7);
+
+function statColor(value, target, kind) {
+  if (kind === 'floor') return value >= target ? BLUE : RED;
+  return value <= target ? BLUE : RED;
+}
+const effective = (f) => {
+  const pct = (f.percent ?? 100) / 100;
+  return { protein: f.protein * pct, carbs: f.carbs * pct, fiber: f.fiber * pct, fat: f.fat * pct, calories: f.calories * pct };
+};
+
+// ---------- UI atoms ----------
+function HydrationCard({ water, target, onAdd, gold, neutral }) {
+  const [val, setVal] = useState('');
+  const [mode, setMode] = useState('add'); // 'add' | 'subtract'
+  const color = neutral ? TEXT : statColor(water, target, 'floor');
+  const submit = () => {
+    const n = parseFloat(val);
+    if (!n || n === 0) return;
+    if (mode === 'add' && n > 33) {
+      const ok = window.confirm(`Add ${n}oz to Hydration? That's a lot for one entry — confirm this is right.`);
+      if (!ok) return;
+    }
+    onAdd(mode === 'subtract' ? -n : n);
+    setVal('');
+  };
+  const chips = [8, 12, 16, 20];
+  return (
+    <div className={gold ? 'card gold-card' : 'card'} style={{ padding: 14 }}>
+      <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 12, letterSpacing: '0.05em', textTransform: 'uppercase', color: LABEL, fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+        💧 Hydration{gold && <span style={{ fontSize: 10, color: '#8A6D1D', fontWeight: 700 }}>🔥 7-day streak</span>}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
+        <div style={{ display: 'flex', gap: 6, flex: '1 1 170px', minWidth: 170 }}>
+          <button onClick={() => setMode(mode === 'add' ? 'subtract' : 'add')} title={mode === 'add' ? 'Switch to subtract' : 'Switch to add'} style={{ width: 34, flexShrink: 0, background: mode === 'subtract' ? '#FBEAEA' : '#F6F1F2', border: `1.5px solid ${mode === 'subtract' ? RED : BORDER}`, borderRadius: 9, color: mode === 'subtract' ? RED : BURGUNDY, fontWeight: 700, fontSize: 16 }}>{mode === 'subtract' ? '−' : '+'}</button>
+          <input type="number" inputMode="decimal" value={val} onChange={e => setVal(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} placeholder="oz" style={{ width: 64 }} />
+          <button onClick={submit} style={{ background: mode === 'subtract' ? RED : BURGUNDY, border: 'none', borderRadius: 9, padding: '10px 12px', color: WHITE, fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap' }}>{mode === 'subtract' ? 'Subtract' : '+ Add'}</button>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 26, fontWeight: 700, color, lineHeight: 1, whiteSpace: 'nowrap' }}>{Math.round(water)}<span style={{ fontSize: 12, color: MUTED, fontWeight: 500 }}> oz</span></div>
+          <div style={{ fontSize: 11, color: MUTED, marginTop: 2, whiteSpace: 'nowrap' }}>goal {target} oz</div>
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        {chips.map(c => <button key={c} onClick={() => onAdd(c)} style={{ flex: 1, background: 'var(--input-bg)', border: `1px solid ${BORDER}`, borderRadius: 8, padding: '9px 0', fontSize: 12.5, fontWeight: 600, color: LABEL }}>+{c}</button>)}
+      </div>
+    </div>
+  );
+}
+
+function ConfettiOverlay() {
+  const colors = ['#7A1F2B', '#E8C55A', '#1B5E3C', '#2563EB', '#FFFFFF'];
+  const pieces = [...Array(40)].map((_, i) => ({
+    id: i, left: Math.random() * 100, delay: Math.random() * 0.4, duration: 1.8 + Math.random() * 0.8,
+    color: colors[i % colors.length], rotate: Math.random() * 360,
+  }));
+  return (
+    <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 999 }}>
+      {pieces.map(p => (
+        <div key={p.id} className="confetti-piece" style={{ left: `${p.left}%`, background: p.color, animationDelay: `${p.delay}s`, animationDuration: `${p.duration}s`, transform: `rotate(${p.rotate}deg)` }} />
+      ))}
+    </div>
+  );
+}
+
+function RowStat({ label, emoji, value, target, unit, kind, note, gold, neutral }) {
+  const color = neutral ? TEXT : statColor(value, target, kind);
+  const pct = Math.min(100, (value / target) * 100);
+  return (
+    <div className={gold ? 'card gold-card' : 'card'} style={{ border: `1px solid ${BORDER}`, borderRadius: 12, padding: '10px 8px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', flex: 1, minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6 }}>
+        <span style={{ fontSize: 11 }}>{emoji}</span>
+        <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 8.5, letterSpacing: '0.03em', textTransform: 'uppercase', color: LABEL, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
+        {gold && <span style={{ fontSize: 8, color: '#8A6D1D', fontWeight: 700, marginLeft: 'auto' }}>🔥7d</span>}
+      </div>
+      <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 19, fontWeight: 700, color, lineHeight: 1 }}>{Math.round(value)}<span style={{ fontSize: 10, color: MUTED, fontWeight: 500 }}>{unit}</span></div>
+      <div style={{ fontSize: 9.5, color: MUTED, marginTop: 2 }}>/ {target}{unit}</div>
+      <div style={{ height: 4, background: TRACK_BG, borderRadius: 2, marginTop: 6, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: neutral ? '#9A98A1' : color, borderRadius: 2 }} />
+      </div>
+      {note && <div style={{ fontSize: 9, color: MUTED, marginTop: 4 }}>{note}</div>}
+    </div>
+  );
+}
+
+function Modal({ title, onClose, children }) {
+  const swipeStartY = useRef(null);
+  const sheetRef = useRef(null);
+  const onSheetTouchStart = (e) => {
+    // only arm the close-swipe if already at the top of the content — otherwise this is just normal scrolling
+    if (sheetRef.current && sheetRef.current.scrollTop <= 0) swipeStartY.current = e.touches[0].clientY;
+    else swipeStartY.current = null;
+  };
+  const onSheetTouchEnd = (e) => {
+    if (swipeStartY.current === null) return;
+    const dy = e.changedTouches[0].clientY - swipeStartY.current;
+    swipeStartY.current = null;
+    if (dy > 60) onClose();
+  };
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(30,10,20,0.5)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 50 }}
+      onTouchStart={(e) => e.stopPropagation()} onTouchEnd={(e) => e.stopPropagation()}>
+      <div ref={sheetRef} onTouchStart={onSheetTouchStart} onTouchEnd={onSheetTouchEnd} style={{ background: 'var(--card-bg)', borderRadius: '16px 16px 0 0', padding: 22, width: '100%', maxWidth: 480, maxHeight: '88vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+          <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700, color: LABEL }}>{title}</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 20 }}>✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+function Field({ label, children }) {
+  return <div style={{ marginBottom: 12 }}><label style={{ fontSize: 12, color: MUTED, display: 'block', marginBottom: 5, fontWeight: 500 }}>{label}</label>{children}</div>;
+}
+function PrimaryButton({ onClick, label = 'Save', style, disabled }) {
+  return <button onClick={onClick} disabled={disabled} style={{ width: '100%', background: disabled ? '#C9C6D1' : BURGUNDY, border: 'none', borderRadius: 9, padding: 13, color: WHITE, fontWeight: 700, fontSize: 14, marginTop: 6, ...style }}>{label}</button>;
+}
+function Checkbox({ checked, onClick, label }) {
+  return (
+    <button onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 9, background: 'none', border: 'none', padding: '6px 0 2px' }}>
+      <div style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${checked ? BURGUNDY : '#C9C6D1'}`, background: checked ? BURGUNDY : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        {checked && <span style={{ color: WHITE, fontSize: 11, fontWeight: 700 }}>✓</span>}
+      </div>
+      <span style={{ fontSize: 13, color: TEXT }}>{label}</span>
+    </button>
+  );
+}
+
+function HomeScreenSteps() {
+  return (
+    <div>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontFamily: "'Oswald', sans-serif", fontWeight: 600, fontSize: 13, color: LABEL, marginBottom: 8 }}>iPhone (Safari)</div>
+        <ol style={{ fontSize: 13, color: TEXT, paddingLeft: 18, lineHeight: 1.8 }}>
+          <li>Tap the Share icon at the bottom of the screen</li>
+          <li>Scroll down and tap "Add to Home Screen"</li>
+          <li>Tap "Add" in the top right</li>
+        </ol>
+      </div>
+      <div>
+        <div style={{ fontFamily: "'Oswald', sans-serif", fontWeight: 600, fontSize: 13, color: LABEL, marginBottom: 8 }}>Android (Chrome)</div>
+        <ol style={{ fontSize: 13, color: TEXT, paddingLeft: 18, lineHeight: 1.8 }}>
+          <li>Tap the ⋮ menu in the top right</li>
+          <li>Tap "Add to Home Screen"</li>
+          <li>Tap "Add" to confirm</li>
+        </ol>
+      </div>
+    </div>
+  );
+}
+
+// =====================================================================
+function CarbTrack() {
+  const [profile, setProfile] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [pinStatus, setPinStatus] = useState('checking'); // 'checking' | 'need-setup' | 'need-verify' | 'unlocked'
+  const [selectedDate, setSelectedDate] = useState(todayISO());
+  const swipeStart = useRef(null);
+  const handleSwipeStart = (e) => { const t = e.touches[0]; swipeStart.current = { x: t.clientX, y: t.clientY }; };
+  const handleSwipeEnd = (e, onSwipeRight, onSwipeLeft) => {
+    const s = swipeStart.current;
+    swipeStart.current = null;
+    if (!s) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - s.x, dy = t.clientY - s.y;
+    if (Math.abs(dx) < 90) return; // needs a deliberate sideways swipe, not a tap or small drift
+    if (Math.abs(dx) < Math.abs(dy) * 2.5) return; // must be clearly more sideways than up/down, so normal scrolling never changes the day
+    if (dx > 0 && onSwipeRight) onSwipeRight();
+    else if (dx < 0 && onSwipeLeft) onSwipeLeft();
+  };
+  const [weekAnchor, setWeekAnchor] = useState(todayISO());
+  const goToAdjacentDay = (delta) => {
+    const next = iso(addDays(new Date(selectedDate + 'T00:00:00'), delta));
+    setSelectedDate(next);
+    if (startOfWeek(next).getTime() !== startOfWeek(weekAnchor).getTime()) setWeekAnchor(next);
+  };
+  const [dayData, setDayData] = useState(EMPTY_DAY);
+  const [weightLog, setWeightLog] = useState([]);
+  const [bpLog, setBpLog] = useState([]);
+  const [measureLog, setMeasureLog] = useState([]);
+  const [sleepLog, setSleepLog] = useState([]);
+  const [commonFoods, setCommonFoods] = useState([]);
+  const [mealTemplates, setMealTemplates] = useState([]);
+  const [exerciseLibrary, setExerciseLibrary] = useState([]);
+  const [dismissed, setDismissed] = useState({});
+
+  const [addFoodMeal, setAddFoodMeal] = useState(null);
+  const [aiMeal, setAiMeal] = useState(null);
+  const [editFood, setEditFood] = useState(null);
+  const [showAddWorkout, setShowAddWorkout] = useState(false);
+  const [showWeightForm, setShowWeightForm] = useState(false);
+  const [showBpForm, setShowBpForm] = useState(false);
+  const [showMeasureForm, setShowMeasureForm] = useState(false);
+  const [showSleepForm, setShowSleepForm] = useState(false);
+  const [editSleep, setEditSleep] = useState(null);
+  const [showWorkoutAi, setShowWorkoutAi] = useState(false);
+  const [showTrainingType, setShowTrainingType] = useState(false);
+  const [pendingTrainingType, setPendingTrainingType] = useState(null);
+  const [showTrainingMethod, setShowTrainingMethod] = useState(false);
+  const [showExercisePicker, setShowExercisePicker] = useState(false);
+  const [pendingExerciseName, setPendingExerciseName] = useState(null);
+  const [showSetEntry, setShowSetEntry] = useState(false);
+  const [exerciseHistoryFor, setExerciseHistoryFor] = useState(null);
+  const [pendingInitialSets, setPendingInitialSets] = useState(null);
+  const [prMessage, setPrMessage] = useState(null);
+  const [showWeightHistory, setShowWeightHistory] = useState(false);
+  const [showTrainingHistory, setShowTrainingHistory] = useState(false);
+  const [showBpHistory, setShowBpHistory] = useState(false);
+  const [showMeasureHistory, setShowMeasureHistory] = useState(false);
+  const [showSleepHistory, setShowSleepHistory] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showReconnect, setShowReconnect] = useState(false);
+  const [nightModeSetting, setNightModeSetting] = useState('auto'); // 'auto' | 'light' | 'dark'
+  const [isDarkNow, setIsDarkNow] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showHome, setShowHome] = useState(false);
+  const [popup, setPopup] = useState(null);
+  const [pickMealFor, setPickMealFor] = useState(null); // Frequent Foods item awaiting meal choice
+  const [editRegular, setEditRegular] = useState(null);
+  const [showRegulars, setShowRegulars] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [confettiFor, setConfettiFor] = useState(null);
+  const [showCoach, setShowCoach] = useState(false);
+  const [dailyQuote, setDailyQuote] = useState(null);
+  const [quoteExpanded, setQuoteExpanded] = useState(false);
+  const [coachText, setCoachText] = useState(null);
+  const [coachLoading, setCoachLoading] = useState(false);
+  const [coachError, setCoachError] = useState(null);
+  const [exceptionDaysState, setExceptionDaysState] = useState([]);
+  const [vacation, setVacation] = useState(EMPTY_VACATION);
+  const vacationActive = vacation.on && !(vacation.endDate && todayISO() > vacation.endDate);
+  const [expandedMeals, setExpandedMeals] = useState({});
+  const [trainingExpanded, setTrainingExpanded] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      await reconcileWithCloud(); // pull cloud data (or migrate local -> cloud on first run)
+      setProfile(load('kt-profile', null));
+      setWeightLog(load('kt-weight-log', []));
+      setBpLog(load('kt-bp-log', []));
+      setMeasureLog(load('kt-measure-log', []));
+      setSleepLog(load('kt-sleep-log', []));
+      if (!load('kt-ff-v2-reset', false)) {
+        setCommonFoods([]);
+        save('kt-common-foods', []);
+        save('kt-ff-v2-reset', true);
+      } else {
+        setCommonFoods(load('kt-common-foods', []));
+      }
+      setDismissed(load('kt-dismissed', {}));
+      setExceptionDaysState(load('kt-exception-days', []));
+      setMealTemplates(load('kt-meal-templates', []));
+      // Build 38: split the generic "Bicep Curls" into Dumbbell / Barbell. Existing history and PRs stay under Dumbbell Curls.
+      if (!load('kt-curls-split-b38', false)) {
+        try {
+          const lib = load('kt-exercise-library', null);
+          if (lib) {
+            const seen = new Set();
+            const renamed = lib.map(e => e.name === 'Bicep Curls' ? { ...e, name: 'Dumbbell Curls' } : e).filter(e => { if (seen.has(e.name)) return false; seen.add(e.name); return true; });
+            if (!seen.has('Dumbbell Curls')) renamed.push({ id: Date.now(), name: 'Dumbbell Curls', count: 0, pinned: false });
+            if (!seen.has('Barbell Curls')) renamed.push({ id: Date.now() + 1, name: 'Barbell Curls', count: 0, pinned: false });
+            save('kt-exercise-library', renamed);
+          }
+          const dayKeys = [];
+          for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith('kt-day-')) dayKeys.push(k); }
+          dayKeys.forEach(k => {
+            const day = load(k, null);
+            if (day && Array.isArray(day.workouts) && day.workouts.some(w => w.exerciseName === 'Bicep Curls')) {
+              save(k, { ...day, workouts: day.workouts.map(w => w.exerciseName === 'Bicep Curls' ? { ...w, exerciseName: 'Dumbbell Curls' } : w) });
+            }
+          });
+          save('kt-curls-split-b38', true);
+        } catch (e) { console.error('curls migration failed', e); }
+      }
+      const loadedVacation = normalizeVacation(load('kt-vacation', EMPTY_VACATION));
+      setVacation(loadedVacation);
+      const existingLibrary = load('kt-exercise-library', null);
+      if (existingLibrary === null) {
+        const seeded = SEED_EXERCISES.map((name, i) => ({ id: Date.now() + i, name, count: 0, pinned: false }));
+        save('kt-exercise-library', seeded);
+        setExerciseLibrary(seeded);
+      } else {
+        setExerciseLibrary(existingLibrary);
+      }
+      setNightModeSetting(load('kt-night-mode', 'auto'));
+      setLoaded(true);
+
+      // PIN gate check — only meaningful once a profile exists (no point gating an empty first-run)
+      const hasProfile = !!load('kt-profile', null);
+      if (!hasProfile) { setPinStatus('unlocked'); return; }
+      try {
+        const deviceId = getDeviceId();
+        const res = await fetch('/api/auth?action=check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deviceId }) });
+        if (!res.ok) { setPinStatus('unlocked'); return; } // backend unreachable — don't lock the person out
+        const data = await res.json();
+        if (!data.hasPin) setPinStatus('need-setup');
+        else if (!data.verifiedThisMonth) setPinStatus('need-verify');
+        else setPinStatus('unlocked');
+      } catch (e) {
+        setPinStatus('unlocked'); // offline — don't lock the person out of their own local data
+      }
+    })();
+  }, []);
+
+  useEffect(() => { setDayData(load(DAY_KEY(selectedDate), EMPTY_DAY)); }, [selectedDate]);
+
+  const targets = profile?.targets || DEFAULT_TARGETS;
+  const goalWeight = profile?.goalWeight || 200;
+
+  const persistDay = (next) => { setDayData(next); save(DAY_KEY(selectedDate), next); };
+  const persistWeight = (next) => { setWeightLog(next); save('kt-weight-log', next); };
+  const persistBp = (next) => { setBpLog(next); save('kt-bp-log', next); };
+  const persistMeasure = (next) => { setMeasureLog(next); save('kt-measure-log', next); };
+  const persistSleep = (next) => { setSleepLog(next); save('kt-sleep-log', next); };
+  const updateSleep = (id, updates) => {
+    const idx = id ? sleepLog.findIndex(s => s.id === id) : -1;
+    const targetIdx = idx >= 0 ? idx : sleepLog.length - 1;
+    if (targetIdx < 0) return;
+    const next = [...sleepLog];
+    next[targetIdx] = { ...next[targetIdx], ...updates };
+    persistSleep(next);
+  };
+  const persistCommon = (next) => { setCommonFoods(next); save('kt-common-foods', next); };
+  const persistTemplates = (next) => { setMealTemplates(next); save('kt-meal-templates', next); };
+  const persistExerciseLibrary = (next) => { setExerciseLibrary(next); save('kt-exercise-library', next); };
+  const recordExerciseUse = (exerciseName) => {
+    const existing = exerciseLibrary.find(e => e.name.toLowerCase() === exerciseName.toLowerCase());
+    if (existing) {
+      persistExerciseLibrary(exerciseLibrary.map(e => e.id === existing.id ? { ...e, count: (e.count || 0) + 1 } : e));
+    } else {
+      persistExerciseLibrary([...exerciseLibrary, { id: Date.now() + Math.random(), name: exerciseName, count: 1, pinned: false }]);
+    }
+  };
+  const toggleExercisePin = (id) => persistExerciseLibrary(exerciseLibrary.map(e => e.id === id ? { ...e, pinned: !e.pinned } : e));
+  const deleteExercise = (id) => persistExerciseLibrary(exerciseLibrary.filter(e => e.id !== id));
+
+  const getExerciseHistory = (exerciseName) => {
+    const entries = [];
+    for (let i = 0; i <= 365; i++) {
+      const d = iso(addDays(new Date(), -i));
+      const parsed = load(DAY_KEY(d), null);
+      if (!parsed || !parsed.workouts) continue;
+      parsed.workouts.forEach(w => { if (w.exerciseName === exerciseName) entries.push({ ...w, date: d }); });
+    }
+    return entries;
+  };
+  const persistDismissed = (partial) => {
+    setDismissed(prev => {
+      const next = { ...prev, ...partial };
+      save('kt-dismissed', next);
+      return next;
+    });
+  };
+
+  const allFoods = useMemo(() => Object.values(dayData.meals || {}).flat(), [dayData]);
+  const totals = allFoods.reduce((acc, f) => {
+    const e = effective(f);
+    return { calories: acc.calories + e.calories, protein: acc.protein + e.protein, netCarbs: acc.netCarbs + Math.max(0, e.carbs - e.fiber), fat: acc.fat + e.fat };
+  }, { calories: 0, protein: 0, netCarbs: 0, fat: 0 });
+  const caloriesBurned = (dayData.workouts || []).reduce((sum, w) => sum + (w.activeCalories || 0), 0);
+  const netCalories = Math.max(0, totals.calories - caloriesBurned);
+
+  // record / bump a food's frequency in Frequent Foods (unified across meals, no fuzzy matching)
+  const recordCommonFood = (food, snapshot) => {
+    const matchName = (food.canonicalName || food.name).trim().toLowerCase();
+    const idx = snapshot.findIndex(cf => cf.name.trim().toLowerCase() === matchName);
+    if (idx >= 0) {
+      const next = [...snapshot];
+      next[idx] = { ...next[idx], count: (next[idx].count || 1) + 1 };
+      return next;
+    }
+    // brand new food — per-unit macros default to what was logged this time (1 unit), category
+    // starts uncategorized until the AI sweep or Clean Up assigns one
+    return [...snapshot, { id: Date.now() + Math.random(), name: food.canonicalName || food.name, protein: food.protein, carbs: food.carbs, fiber: food.fiber, fat: food.fat, calories: food.calories, count: 1, pinned: false, category: null }];
+  };
+
+  const addFood = (mealKey, food) => {
+    const next = { ...dayData, meals: { ...dayData.meals, [mealKey]: [...dayData.meals[mealKey], { ...food, id: Date.now() + Math.random(), percent: 100 }] } };
+    persistDay(next);
+    persistCommon(recordCommonFood(food, commonFoods));
+    const e = effective({ ...food, percent: 100 });
+    const netC = Math.max(0, e.carbs - e.fiber);
+    const carbThird = targets.netCarbs / 3, proteinThird = targets.protein / 3;
+    setPopup({ carbs: { value: netC, over: netC > carbThird, third: carbThird }, protein: { value: e.protein, over: e.protein < proteinThird, third: proteinThird } });
+  };
+
+  const addFoodBatch = (mealKey, foods, estimated) => {
+    const stamped = foods.map(f => ({ ...f, id: Date.now() + Math.random(), percent: 100, estimated: !!estimated }));
+    const hydrationAdd = foods.reduce((sum, f) => sum + (f.hydrationOz || 0), 0);
+    const next = { ...dayData, meals: { ...dayData.meals, [mealKey]: [...dayData.meals[mealKey], ...stamped] }, water: Math.max(0, dayData.water + hydrationAdd) };
+    persistDay(next);
+    let cf = commonFoods;
+    foods.forEach(f => { cf = recordCommonFood(f, cf); });
+    persistCommon(cf);
+    const totals2 = foods.reduce((acc, f) => {
+      const e = effective({ ...f, percent: 100 });
+      return { carbs: acc.carbs + Math.max(0, e.carbs - e.fiber), protein: acc.protein + e.protein };
+    }, { carbs: 0, protein: 0 });
+    const carbThird = targets.netCarbs / 3, proteinThird = targets.protein / 3;
+    setPopup({ carbs: { value: totals2.carbs, over: totals2.carbs > carbThird, third: carbThird }, protein: { value: totals2.protein, over: totals2.protein < proteinThird, third: proteinThird }, hydrationAdded: hydrationAdd > 0 ? hydrationAdd : null });
+  };
+
+  const updateFood = (mealKey, id, updates) => persistDay({ ...dayData, meals: { ...dayData.meals, [mealKey]: dayData.meals[mealKey].map(f => f.id === id ? { ...f, ...updates } : f) } });
+  const removeFood = (mealKey, id) => persistDay({ ...dayData, meals: { ...dayData.meals, [mealKey]: dayData.meals[mealKey].filter(f => f.id !== id) } });
+
+  const logRegularsToMeal = (regulars, mealKey) => {
+    const list = Array.isArray(regulars) ? regulars : [regulars];
+    addFoodBatch(mealKey, list.map(r => {
+      const q = r.qty && r.qty > 0 ? r.qty : 1; // qty is always in BASE units here, for correct macro math
+      const displayQty = r.displayQty || q;
+      const displayUnit = r.displayUnit || (CATEGORY_UNITS[r.category] ? CATEGORY_UNITS[r.category].baseUnit : 'pc');
+      const name = (displayQty !== 1) ? `${displayQty} ${displayUnit} ${r.name}` : r.name;
+      return { name, canonicalName: r.name, protein: r.protein * q, carbs: r.carbs * q, fiber: r.fiber * q, fat: r.fat * q, calories: r.calories * q };
+    }), false);
+    setPickMealFor(null);
+  };
+  const togglePinRegular = (id) => persistCommon(commonFoods.map(cf => cf.id === id ? { ...cf, pinned: !cf.pinned } : cf));
+  const deleteRegular = (id) => persistCommon(commonFoods.filter(cf => cf.id !== id));
+  const updateRegular = (id, updates) => persistCommon(commonFoods.map(cf => cf.id === id ? { ...cf, ...updates } : cf));
+
+  // one-time cleanup: strip leading quantities from names, merge items that match after normalization,
+  // averaging their per-unit macros and combining frequency counts
+  const cleanupFrequentFoods = () => {
+    const UNIT_WORDS = ['slice', 'slices', 'piece', 'pieces', 'pc', 'pcs', 'cup', 'cups', 'tbsp', 'tbs', 'tablespoon', 'tablespoons', 'tsp', 'teaspoon', 'teaspoons', 'oz', 'ounce', 'ounces', 'serving', 'servings', 'strip', 'strips', 'link', 'links'];
+    const SINGULAR = { slices: 'slice', pieces: 'piece', pcs: 'pc', cups: 'cup', tbs: 'tbsp', tablespoons: 'tbsp', tablespoon: 'tbsp', teaspoons: 'tsp', teaspoon: 'tsp', ounces: 'oz', ounce: 'oz', servings: 'serving', strips: 'strip', links: 'link' };
+    // strip a trailing parenthetical quantity descriptor entirely — rename only, never used to divide macros,
+    // since some ("9 count") are true multipliers and others ("26g") are just a size descriptor of one item,
+    // and guessing wrong would silently corrupt someone's macro data
+    const stripParenthetical = (name) => name.replace(/\s*\([^)]*\)\s*$/, '').trim();
+    const normalize = (rawName) => {
+      const trimmed = stripParenthetical(rawName.trim());
+      // compound pattern: "2 slices of bread" / "2 slices bread" — leading number, a known unit word, optional "of", then the food name
+      const compound = trimmed.match(/^(\d+(?:\.\d+)?)\s+([a-zA-Z]+)\s+(?:of\s+)?(.*)$/i);
+      if (compound && UNIT_WORDS.includes(compound[2].toLowerCase())) {
+        const qty = parseFloat(compound[1]) || 1;
+        const unit = SINGULAR[compound[2].toLowerCase()] || compound[2].toLowerCase();
+        const rest = compound[3].trim();
+        let key = rest.toLowerCase().trim();
+        if (key.endsWith('s') && key.length > 3) key = key.slice(0, -1);
+        return { qty, rest, key, unit };
+      }
+      // plain leading number: "2 Eggs"
+      const m = trimmed.match(/^(\d+(?:\.\d+)?)\s+(.*)$/);
+      const qty = m ? parseFloat(m[1]) : 1;
+      const rest = m ? m[2] : trimmed;
+      let key = rest.toLowerCase().trim();
+      if (key.endsWith('s') && key.length > 3) key = key.slice(0, -1);
+      return { qty: qty || 1, rest, key, unit: null };
+    };
+    const groups = {};
+    commonFoods.forEach(cf => {
+      const { qty, rest, key, unit } = normalize(cf.name);
+      const groupKey = (cf.restaurant || '') + '|' + key;
+      (groups[groupKey] = groups[groupKey] || []).push({ ...cf, _qty: qty, _rest: rest, _unit: unit });
+    });
+    const merged = [];
+    let mergedCount = 0;
+    Object.values(groups).forEach(items => {
+      if (items.length === 1) {
+        const original = commonFoods.find(cf => cf.id === items[0].id);
+        const nameChanged = items[0]._rest !== original.name;
+        if (items[0]._unit && items[0]._qty > 1) {
+          // detected unit + a real multiplier — divide the macros down to per-unit
+          merged.push({ ...original, name: items[0]._rest,
+            protein: original.protein / items[0]._qty, carbs: original.carbs / items[0]._qty, fiber: original.fiber / items[0]._qty, fat: original.fat / items[0]._qty, calories: original.calories / items[0]._qty });
+        } else if (nameChanged) {
+          // rename only (covers: plain leading number with no unit word, parenthetical strip, qty===1 with a detected unit) — macros untouched
+          merged.push({ ...original, name: items[0]._rest });
+        } else {
+          merged.push(original);
+        }
+        return;
+      }
+      mergedCount += items.length - 1;
+      const perUnit = items.map(it => ({ protein: it.protein / it._qty, carbs: it.carbs / it._qty, fiber: it.fiber / it._qty, fat: it.fat / it._qty, calories: it.calories / it._qty }));
+      const avg = perUnit.reduce((acc, p) => ({ protein: acc.protein + p.protein, carbs: acc.carbs + p.carbs, fiber: acc.fiber + p.fiber, fat: acc.fat + p.fat, calories: acc.calories + p.calories }), { protein: 0, carbs: 0, fiber: 0, fat: 0, calories: 0 });
+      const n = perUnit.length;
+      const totalCount = items.reduce((s, it) => s + (it.count || 1), 0);
+      const anyPinned = items.some(it => it.pinned);
+      const canonical = items.reduce((a, b) => (b.count || 1) > (a.count || 1) ? b : a);
+      const existingCategory = items.find(it => it.category)?.category || null;
+      merged.push({
+        id: canonical.id, name: canonical._rest, restaurant: canonical.restaurant || null, category: existingCategory,
+        protein: avg.protein / n, carbs: avg.carbs / n, fiber: avg.fiber / n, fat: avg.fat / n, calories: avg.calories / n,
+        count: totalCount, pinned: anyPinned,
+      });
+    });
+    persistCommon(merged);
+    return mergedCount;
+  };
+
+  const categorizeUncategorizedFoods = async () => {
+    const uncategorized = commonFoods.filter(cf => !cf.category);
+    if (uncategorized.length === 0) return;
+    try {
+      const res = await fetch('/api/categorize', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ names: uncategorized.map(cf => cf.name) }) });
+      const data = await res.json();
+      if (!data.results) return;
+      const byName = {};
+      data.results.forEach(r => { byName[r.name.trim().toLowerCase()] = r.category; });
+      const updated = commonFoods.map(cf => (!cf.category && byName[cf.name.trim().toLowerCase()]) ? { ...cf, category: byName[cf.name.trim().toLowerCase()] } : cf);
+      persistCommon(updated);
+    } catch (e) { /* offline or failed — foods stay uncategorized until next attempt, defaults to 'piece' in the meantime */ }
+  };
+
+  const runCleanupAndCategorize = () => {
+    const n = cleanupFrequentFoods();
+    categorizeUncategorizedFoods();
+    return n;
+  };
+
+  // daily automatic sweep — categorize anything new that slipped in, once per day, silently
+  useEffect(() => {
+    if (!loaded) return;
+    const todayKey = todayISO();
+    if (load('kt-ff-sweep-date', null) !== todayKey) {
+      save('kt-ff-sweep-date', todayKey);
+      categorizeUncategorizedFoods();
+    }
+  }, [loaded]);
+
+  const addWorkout = (w) => persistDay({ ...dayData, workouts: [...dayData.workouts, { ...w, id: Date.now() }] });
+  const removeWorkout = (id) => persistDay({ ...dayData, workouts: dayData.workouts.filter(w => w.id !== id) });
+  const addWater = (amt) => persistDay({ ...dayData, water: Math.max(0, dayData.water + amt) });
+
+  const latestWeight = weightLog.length ? weightLog[weightLog.length - 1].weight : null;
+  const startWeight = weightLog.length ? weightLog[0].weight : null;
+  const latestBp = bpLog.length ? bpLog[bpLog.length - 1] : null;
+  const latestSleep = sleepLog.find(s => s.date === selectedDate) || null;
+  const mostRecentSleep = sleepLog.length ? sleepLog[sleepLog.length - 1] : null;
+
+  const weeksToGoal = useMemo(() => {
+    if (weightLog.length < 2 || !goalWeight) return null;
+    const first = weightLog[0], last = weightLog[weightLog.length - 1];
+    const days = (new Date(last.date) - new Date(first.date)) / 86400000;
+    if (days <= 0) return null;
+    const ratePerDay = (first.weight - last.weight) / days;
+    const remaining = last.weight - goalWeight;
+    if (remaining <= 0) return 0;
+    if (ratePerDay <= 0) return null;
+    return Math.ceil(remaining / (ratePerDay * 7));
+  }, [weightLog, goalWeight]);
+
+  const totalInchesLost = useMemo(() => {
+    if (measureLog.length < 2) return null;
+    const first = measureLog[0], last = measureLog[measureLog.length - 1];
+    const keys = ['waist', 'chest', 'hips', 'arms', 'thighs'];
+    let total = 0;
+    keys.forEach(k => { if (first[k] && last[k]) total += (first[k] - last[k]); });
+    return total;
+  }, [measureLog]);
+
+  const EXCEPTION_DAYS_KEY = 'kt-exception-days';
+  const exceptionDays = exceptionDaysState;
+  const persistExceptionDays = (next) => { setExceptionDaysState(next); save(EXCEPTION_DAYS_KEY, next); };
+  const toggleExceptionDay = (date) => {
+    persistExceptionDays(exceptionDays.includes(date) ? exceptionDays.filter(d => d !== date) : [...exceptionDays, date]);
+  };
+
+  const vacationRanges = [...vacation.ranges, ...(vacation.on ? [{ start: vacation.startDate, end: vacation.endDate || '9999-12-31' }] : [])];
+  const isVacationDay = (d) => vacationRanges.some(r => r.start && d >= r.start && d <= r.end);
+  const persistVacation = (next) => { setVacation(next); save('kt-vacation', next); };
+  const setVacationMode = (on, endDate) => {
+    const cur = normalizeVacation(vacation);
+    if (on) {
+      persistVacation({ ...cur, on: true, startDate: cur.on && cur.startDate ? cur.startDate : todayISO(), endDate: endDate || null });
+    } else if (cur.on) {
+      persistVacation({ on: false, startDate: null, endDate: null, ranges: [...cur.ranges, { start: cur.startDate, end: todayISO() }] });
+    } else {
+      persistVacation(cur);
+    }
+  };
+
+  const computeCategoryStreak = (getDayTotal, target, kind) => {
+    let count = 0;
+    for (let i = 1; i <= 90; i++) { // start at 1 (yesterday) — today's in-progress totals don't count toward the streak yet
+      const d = iso(addDays(new Date(), -i));
+      if (exceptionDays.includes(d)) continue; // planned exception day — skip, doesn't count as pass or break
+      if (isVacationDay(d)) continue; // vacation day: streaks pause here, they neither grow nor break
+      const parsed = load(DAY_KEY(d), null);
+      if (!parsed) break;
+      const val = getDayTotal(parsed);
+      const pass = kind === 'any' ? val : (kind === 'floor' ? val >= target : val <= target);
+      if (pass) count++;
+      else break;
+    }
+    return count;
+  };
+
+  const dayMacroTotals = (parsed) => {
+    const foods = Object.values(parsed.meals || {}).flat();
+    return foods.reduce((acc, f) => { const e = effective(f); return { calories: acc.calories + e.calories, protein: acc.protein + e.protein, netCarbs: acc.netCarbs + Math.max(0, e.carbs - e.fiber), fat: acc.fat + e.fat }; }, { calories: 0, protein: 0, netCarbs: 0, fat: 0 });
+  };
+
+  const streaks = useMemo(() => ({
+    protein: computeCategoryStreak(p => dayMacroTotals(p).protein, targets.protein, 'floor'),
+    netCarbs: computeCategoryStreak(p => dayMacroTotals(p).netCarbs, targets.netCarbs, 'ceiling'),
+    calories: computeCategoryStreak(p => {
+      const burned = (p.workouts || []).reduce((s, w) => s + (w.activeCalories || 0), 0);
+      return Math.max(0, dayMacroTotals(p).calories - burned);
+    }, targets.calories, 'ceiling'),
+    fat: computeCategoryStreak(p => dayMacroTotals(p).fat, targets.fat, 'floor'),
+    hydration: computeCategoryStreak(p => p.water || 0, targets.water, 'floor'),
+    training: computeCategoryStreak(p => (p.workouts || []).length > 0, null, 'any'),
+  }), [dayData, targets, vacation]);
+
+  const goldCards = useMemo(() => vacationActive ? { protein: false, netCarbs: false, calories: false, fat: false, hydration: false, training: false } : ({
+    protein: streaks.protein >= 7, netCarbs: streaks.netCarbs >= 7, calories: streaks.calories >= 7,
+    fat: streaks.fat >= 7, hydration: streaks.hydration >= 7, training: streaks.training >= 7,
+  }), [streaks, vacationActive]);
+
+  const weightMilestoneLevel = (startWeight && latestWeight) ? Math.floor(Math.max(0, startWeight - latestWeight) / 5) : 0;
+
+  // shared personal context passed to any live coaching suggestion (exercise-specific or by training type)
+  const buildProfileContext = () => ({
+    age: profile.age || null,
+    currentWeight: latestWeight || profile.currentWeight || null,
+    weightTrend: (startWeight && latestWeight) ? Math.round((startWeight - latestWeight) * 10) / 10 : null,
+    goalWeight: profile.goalWeight || null,
+    latestBp: bpLog.length > 0 ? bpLog[bpLog.length - 1] : null,
+    targets,
+  });
+  const weightGold = weightMilestoneLevel >= 1;
+
+  // trigger confetti once per calendar day, the day a category first reaches a 7+ streak
+  useEffect(() => {
+    const todayKey = todayISO();
+    let fired = null;
+    Object.entries(goldCards).forEach(([cat, isGold]) => {
+      const sessionKey = 'kt-session-goldCelebrated_' + cat;
+      const alreadyThisSession = (() => { try { return sessionStorage.getItem(sessionKey) === todayKey; } catch (e) { return false; } })();
+      if (isGold && dismissed['goldCelebrated_' + cat] !== todayKey && !alreadyThisSession) fired = cat;
+    });
+    if (fired) {
+      setConfettiFor(fired);
+      persistDismissed({ ['goldCelebrated_' + fired]: todayKey });
+      try { sessionStorage.setItem('kt-session-goldCelebrated_' + fired, todayKey); } catch (e) {}
+      setTimeout(() => setConfettiFor(null), 2600);
+    }
+  }, [goldCards.protein, goldCards.netCarbs, goldCards.calories, goldCards.fat, goldCards.hydration, goldCards.training]);
+
+  // weight milestones are cumulative progress, not a daily streak — celebrate once per new 5lb milestone reached
+  useEffect(() => {
+    const lastCelebrated = dismissed.lastWeightMilestone || 0;
+    const sessionCelebrated = (() => { try { return parseInt(sessionStorage.getItem('kt-session-lastWeightMilestone') || '0'); } catch (e) { return 0; } })();
+    if (weightMilestoneLevel > lastCelebrated && weightMilestoneLevel > sessionCelebrated) {
+      setConfettiFor('weight');
+      persistDismissed({ lastWeightMilestone: weightMilestoneLevel });
+      try { sessionStorage.setItem('kt-session-lastWeightMilestone', String(weightMilestoneLevel)); } catch (e) {}
+      setTimeout(() => setConfettiFor(null), 2600);
+    }
+  }, [weightMilestoneLevel]);
+
+  // ---------- Night mode ----------
+  const persistNightMode = (val) => { setNightModeSetting(val); save('kt-night-mode', val); };
+
+  useEffect(() => {
+    if (!loaded) return;
+    if (nightModeSetting === 'light') { setIsDarkNow(false); return; }
+    if (nightModeSetting === 'dark') { setIsDarkNow(true); return; }
+    // auto: sunrise/sunset for North Texas in Central time, computed right here (no location permission, no network)
+    const update = () => setIsDarkNow(isDarkAt(Date.now()));
+    update();
+    const interval = setInterval(update, 5 * 60 * 1000); // re-check so it flips live across sunrise/sunset
+    return () => clearInterval(interval);
+  }, [loaded, nightModeSetting]);
+
+  // ---------- Smart Coach: weekly AI recap ----------
+  const getAllTrainingHistory = () => {
+    const entries = [];
+    for (let i = 0; i <= 365; i++) {
+      const d = iso(addDays(new Date(), -i));
+      const parsed = load(DAY_KEY(d), null);
+      if (!parsed || !parsed.workouts || parsed.workouts.length === 0) continue;
+      parsed.workouts.forEach(w => entries.push({ ...w, date: d }));
+    }
+    return entries;
+  };
+
+  const getTrainingTypeHistory = (type, limit = 10) => {
+    const entries = [];
+    for (let i = 1; i <= 90 && entries.length < limit; i++) { // start at 1 (yesterday) — today's session, if any, isn't "history" yet
+      const d = iso(addDays(new Date(), -i));
+      const parsed = load(DAY_KEY(d), null);
+      if (!parsed || !parsed.workouts) continue;
+      parsed.workouts.filter(w => w.type === type).forEach(w => entries.push({ ...w, date: d }));
+    }
+    return entries;
+  };
+
+  const buildCoachSummary = () => {
+    const weeks = [];
+    for (let w = 0; w < 6; w++) { // this week + 5 prior weeks of trend context
+      const weekStart = addDays(startOfWeek(todayISO()), -7 * w);
+      const days = [];
+      for (let i = 0; i < 7; i++) {
+        const d = iso(addDays(weekStart, i));
+        const parsed = load(DAY_KEY(d), null);
+        const isException = exceptionDays.includes(d);
+        if (!parsed) {
+          if (isException) days.push({ date: d, calories: 0, protein: 0, netCarbs: 0, fat: 0, trainingLogged: false, water: 0, exceptionDay: true, nothingLogged: true });
+          continue; // no log and not an exception day — skip, nothing meaningful to report
+        }
+        const foods = Object.values(parsed.meals || {}).flat();
+        const totals = foods.reduce((acc, f) => { const e = effective(f); return { calories: acc.calories + e.calories, protein: acc.protein + e.protein, netCarbs: acc.netCarbs + Math.max(0, e.carbs - e.fiber), fat: acc.fat + e.fat }; }, { calories: 0, protein: 0, netCarbs: 0, fat: 0 });
+        days.push({ date: d, ...totals, trainingLogged: (parsed.workouts || []).length > 0, water: parsed.water || 0, exceptionDay: isException });
+      }
+      weeks.push({ weekOf: iso(weekStart), days });
+    }
+    return {
+      profile: { age: profile.age, targets },
+      weeks,
+      trainingLog: dayData.workouts, // recent context; full history is embedded per-day in weeks above
+      weightLog: weightLog.slice(-12),
+      bpLog: bpLog.slice(-8),
+    };
+  };
+
+  const runSmartCoach = async () => {
+    setShowCoach(true); setCoachLoading(true); setCoachError(null); setCoachText(null);
+    try {
+      const summary = buildCoachSummary();
+      const res = await fetch('/api/coach', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ summary }) });
+      const data = await res.json();
+      if (!res.ok) {
+        setCoachError(data.error === 'not_configured' ? "Smart Coach isn't set up yet on this deployment." : (data.message || 'Could not generate this week\'s recap.'));
+      } else {
+        setCoachText(data.recap);
+      }
+    } catch (e) {
+      setCoachError('Could not reach the server. Check your connection and try again.');
+    }
+    setCoachLoading(false);
+  };
+
+  // daily motivational quote — one per day, rotating through a 50-quote batch with no repeats until it cycles
+  useEffect(() => {
+    if (!loaded || !profile) return;
+    (async () => {
+      const todayKey = todayISO();
+      const cached = load('kt-quote-today', null);
+      if (cached && cached.date === todayKey) { setDailyQuote(cached.quote); return; }
+
+      let batch = load('kt-quote-batch', []);
+      let shown = load('kt-quote-shown-indices', []);
+      if (batch.length === 0 || shown.length >= batch.length) {
+        try {
+          const res = await fetch('/api/quote');
+          const data = await res.json();
+          if (data.quotes && data.quotes.length > 0) { batch = data.quotes; shown = []; save('kt-quote-batch', batch); }
+        } catch (e) { /* offline — fall back to whatever's cached, or show nothing */ }
+      }
+      if (batch.length === 0) return;
+      const available = batch.map((_, i) => i).filter(i => !shown.includes(i));
+      const pickPool = available.length > 0 ? available : batch.map((_, i) => i);
+      const idx = pickPool[Math.floor(Math.random() * pickPool.length)];
+      const quote = batch[idx];
+      save('kt-quote-shown-indices', [...shown, idx]);
+      save('kt-quote-today', { date: todayKey, quote });
+      setDailyQuote(quote);
+    })();
+  }, [loaded, profile]);
+
+  // auto-trigger on the first day of a new week (Sunday), once per week
+  useEffect(() => {
+    if (!loaded || !profile) return;
+    const today = new Date();
+    const isSunday = today.getDay() === 0;
+    const weekKey = todayISO();
+    const alreadyThisSession = (() => { try { return sessionStorage.getItem('kt-session-coachShownWeek') === weekKey; } catch (e) { return false; } })();
+    if (isSunday && !vacationActive && dismissed.coachShownWeek !== weekKey && !alreadyThisSession) {
+      persistDismissed({ coachShownWeek: weekKey });
+      try { sessionStorage.setItem('kt-session-coachShownWeek', weekKey); } catch (e) {}
+      runSmartCoach();
+    }
+  }, [loaded, profile, vacationActive]);
+
+
+  const weekComparison = useMemo(() => {
+    const avgProtein = (offsetStart) => {
+      let total = 0, n = 0;
+      for (let i = offsetStart; i < offsetStart + 7; i++) {
+        const d = iso(addDays(new Date(), -i));
+        const parsed = load(DAY_KEY(d), null);
+        if (!parsed) continue;
+        const foods = Object.values(parsed.meals || {}).flat();
+        total += foods.reduce((sum, f) => sum + effective(f).protein, 0);
+        n++;
+      }
+      return n ? total / n : null;
+    };
+    const thisWeek = avgProtein(0), lastWeek = avgProtein(7);
+    if (thisWeek === null || lastWeek === null) return null;
+    return Math.round(thisWeek - lastWeek);
+  }, [dayData]);
+
+  const weekDays = useMemo(() => { const start = startOfWeek(weekAnchor); return [...Array(7)].map((_, i) => addDays(start, i)); }, [weekAnchor]);
+
+  const today = new Date();
+  const isFriday = today.getDay() === 5;
+  const loggedWeightToday = weightLog.some(w => w.date === todayISO());
+  const showFridayReminder = isFriday && !loggedWeightToday && dismissed.friday !== todayISO();
+
+  const dom = today.getDate();
+  const loggedBpThisMonth = bpLog.some(b => monthKey(b.date) === monthKey(todayISO()));
+  const showBpReminder = (dom === 1 || dom === 4) && !loggedBpThisMonth && dismissed.bp !== monthKey(todayISO());
+
+  const isStandalone = (typeof window !== 'undefined') && (window.navigator.standalone === true || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches));
+  const showInstallCard = !isStandalone && dismissed.install !== true;
+  const goalMet = latestWeight !== null && goalWeight !== null && latestWeight <= goalWeight;
+  const showGoalMetPrompt = goalMet && dismissed.goalMet !== goalWeight;
+
+  const share = () => {
+    if (navigator.share) navigator.share({ title: 'CarbTrack', text: 'Check out CarbTrack, the keto macro tracker I\'ve been using — tap to try it:', url: window.location.href }).catch(() => {});
+    else { navigator.clipboard?.writeText(window.location.href); alert('Link copied — send it to anyone you want to share CarbTrack with!'); }
+  };
+
+  const exportCSV = () => {
+    const keys = Object.keys(localStorage).filter(k => k.startsWith('kt-day-')).sort();
+    const wMap = Object.fromEntries(weightLog.map(w => [w.date, w.weight]));
+    const bpMap = Object.fromEntries(bpLog.map(b => [b.date, `${b.systolic}/${b.diastolic}`]));
+    const rows = [['Date', 'Calories', 'Protein (g)', 'Net Carbs (g)', 'Fat (g)', 'Water (oz)', 'Weight (lbs)', 'Blood Pressure']];
+    keys.forEach(k => {
+      const date = k.replace('kt-day-', '');
+      const d = load(k, EMPTY_DAY);
+      const foods = Object.values(d.meals || {}).flat();
+      const t = foods.reduce((acc, f) => { const e = effective(f); return { calories: acc.calories + e.calories, protein: acc.protein + e.protein, netCarbs: acc.netCarbs + Math.max(0, e.carbs - e.fiber), fat: acc.fat + e.fat }; }, { calories: 0, protein: 0, netCarbs: 0, fat: 0 });
+      rows.push([date, Math.round(t.calories), Math.round(t.protein), Math.round(t.netCarbs), Math.round(t.fat), d.water || 0, wMap[date] ?? '', bpMap[date] ?? '']);
+    });
+    const csv = rows.map(r => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `ketotrack-export-${todayISO()}.csv`;
+    a.click();
+  };
+
+  if (!loaded) return <div style={{ background: GRAY, minHeight: '100vh' }} />;
+  if (showReconnect) return <PinReconnectScreen onBack={() => setShowReconnect(false)} />;
+  if (!profile) return <ProfileSetup onDone={(p) => {
+    save('kt-profile', p);
+    setProfile(p);
+    if (p.currentWeight) persistWeight([{ date: todayISO(), weight: p.currentWeight, note: '' }]);
+    setPinStatus('need-setup'); // brand new profile — set up cloud protection right after
+  }} onReconnect={() => setShowReconnect(true)} />;
+
+  if (pinStatus === 'need-setup') return <PinSetupScreen onDone={() => setPinStatus('unlocked')} onReconnect={() => setShowReconnect(true)} />;
+  if (pinStatus === 'need-verify') return <PinVerifyScreen onUnlocked={() => setPinStatus('unlocked')} />;
+  if (pinStatus === 'checking') return <div style={{ background: GRAY, minHeight: '100vh' }} />;
+
+  const regularsSorted = [...commonFoods].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || (b.count || 1) - (a.count || 1));
+
+  return (
+    <div className={isDarkNow ? 'dark-mode' : ''} style={{ background: GRAY, minHeight: '100vh', fontFamily: "'Inter', sans-serif", color: TEXT, paddingBottom: 40 }}
+      onTouchStart={handleSwipeStart} onTouchEnd={(e) => handleSwipeEnd(e, () => goToAdjacentDay(-1), () => goToAdjacentDay(1))}>
+      <div style={{ background: BURGUNDY, padding: '22px 20px 18px' }}>
+        <div style={{ maxWidth: 480, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <img src="/leaf-icon.png" alt="" style={{ width: 26, height: 'auto' }} />
+            <h1 style={{ fontFamily: "'Oswald', sans-serif", fontSize: 22, fontWeight: 700, margin: 0, color: WHITE, letterSpacing: '-0.01em' }}>CarbTrack</h1>
+          </div>
+          <button onClick={() => setShowSettings(true)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 8, padding: '8px 10px', color: WHITE, fontSize: 15 }}>⚙</button>
+        </div>
+
+        <div style={{ maxWidth: 480, margin: '18px auto 0', display: 'flex', alignItems: 'center', gap: 4 }}>
+          <button onClick={() => setWeekAnchor(iso(addDays(startOfWeek(weekAnchor), -7)))} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', padding: 2, fontSize: 16 }}>‹</button>
+          <div style={{ flex: 1, display: 'flex', justifyContent: 'space-between' }}>
+            {weekDays.map(d => {
+              const dISO = iso(d);
+              const isSelected = dISO === selectedDate;
+              const isToday = dISO === todayISO();
+              return (
+                <button key={dISO} onClick={() => setSelectedDate(dISO)} style={{ background: 'none', border: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
+                  <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.6)', fontWeight: 600 }}>{dayLabel(d)}</span>
+                  <span style={{ width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: isSelected ? WHITE : 'transparent', border: isToday && !isSelected ? '1.5px dashed rgba(255,255,255,0.6)' : 'none', color: isSelected ? BURGUNDY : WHITE, fontSize: 12, fontWeight: 700 }}>{d.getDate()}</span>
+                </button>
+              );
+            })}
+          </div>
+          <button onClick={() => setWeekAnchor(iso(addDays(startOfWeek(weekAnchor), 7)))} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', padding: 2, fontSize: 16 }}>›</button>
+        </div>
+
+        <button onClick={share} style={{ display: 'block', width: '100%', maxWidth: 480, margin: '16px auto 0', background: 'rgba(255,255,255,0.12)', border: 'none', borderRadius: 10, padding: '11px 14px', textAlign: 'left', fontSize: 12.5 }}>
+          <span style={{ color: 'rgba(255,255,255,0.75)' }}>Know someone who'd like this?  </span>
+          <span style={{ color: WHITE, fontWeight: 700 }}>Share CarbTrack →</span>
+        </button>
+      </div>
+
+      <div style={{ maxWidth: 480, margin: '0 auto', padding: '20px 20px 0', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+        {showInstallCard && (
+          <div className="banner" style={{ background: 'var(--input-bg)', borderColor: BORDER }}>
+            <span style={{ fontSize: 13, color: TEXT }}>📱 Add CarbTrack to your Home Screen so it opens like a real app.</span>
+            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+              <button className="pill" onClick={() => setShowHome(true)}>Show me</button>
+              <button onClick={() => persistDismissed({ install: true })} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 16 }}>✕</button>
+            </div>
+          </div>
+        )}
+
+        {showFridayReminder && (
+          <div className="banner">
+            <span style={{ fontSize: 13, color: '#7A4A1F' }}>It's Friday — log this week's weigh-in.</span>
+            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+              <button className="pill" style={{ background: '#B8721F' }} onClick={() => setShowWeightForm(true)}>Log</button>
+              <button onClick={() => persistDismissed({ friday: todayISO() })} style={{ background: 'none', border: 'none', color: '#7A4A1F', fontSize: 16 }}>✕</button>
+            </div>
+          </div>
+        )}
+        {showBpReminder && (
+          <div className="banner">
+            <span style={{ fontSize: 13, color: '#7A4A1F' }}>Time to check &amp; log your blood pressure this month.</span>
+            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+              <button className="pill" style={{ background: '#B8721F' }} onClick={() => setShowBpForm(true)}>Log</button>
+              <button onClick={() => persistDismissed({ bp: monthKey(todayISO()) })} style={{ background: 'none', border: 'none', color: '#7A4A1F', fontSize: 16 }}>✕</button>
+            </div>
+          </div>
+        )}
+
+        {showGoalMetPrompt && (
+          <div className="banner" style={{ background: '#EAF3EA', borderColor: '#C6E5C6' }}>
+            <span style={{ fontSize: 13, color: '#2E7D32' }}>🎉 Goal weight reached! Time to remeasure and set a new goal?</span>
+            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+              <button className="pill" style={{ background: '#2E7D32' }} onClick={() => { setShowSettings(true); }}>New Goal</button>
+              <button onClick={() => persistDismissed({ goalMet: goalWeight })} style={{ background: 'none', border: 'none', color: '#2E7D32', fontSize: 16 }}>✕</button>
+            </div>
+          </div>
+        )}
+
+        <button onClick={() => toggleExceptionDay(selectedDate)} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', padding: 0, alignSelf: 'flex-start' }}>
+          <div style={{ width: 15, height: 15, borderRadius: 4, border: `1.5px solid ${exceptionDays.includes(selectedDate) ? '#E8C55A' : 'rgba(255,255,255,0.5)'}`, background: exceptionDays.includes(selectedDate) ? '#E8C55A' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            {exceptionDays.includes(selectedDate) && <span style={{ color: '#3A3A3D', fontSize: 10, fontWeight: 700 }}>✓</span>}
+          </div>
+          <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.85)' }}>Planned exception day {exceptionDays.includes(selectedDate) ? '(won\'t break streaks)' : ''}</span>
+        </button>
+
+        {vacationActive && (
+          <button onClick={() => setShowSettings(true)} style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)', borderRadius: 10, padding: '8px 12px', color: WHITE, fontSize: 12.5, fontWeight: 600, textAlign: 'left' }}>
+            🌴 Vacation Mode{vacation.endDate ? ` · until ${new Date(vacation.endDate + 'T00:00:00').toLocaleDateString([], { month: 'short', day: 'numeric' })}` : ''} · tap to change
+          </button>
+        )}
+
+        {dailyQuote && (
+          <div className="card" style={{ padding: 14 }}>
+            <div style={{
+              fontSize: 13, fontStyle: 'italic', color: TEXT, lineHeight: 1.5,
+              ...(quoteExpanded ? {} : { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }),
+            }}>"{dailyQuote.text}"</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+              <span style={{ fontSize: 11.5, color: MUTED }}>— {dailyQuote.author || 'Unknown'}</span>
+              {dailyQuote.text.length > 90 && (
+                <button onClick={() => setQuoteExpanded(!quoteExpanded)} style={{ background: 'none', border: 'none', color: LABEL, fontSize: 11.5, fontWeight: 600 }}>{quoteExpanded ? 'See less' : 'See more'}</button>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 6 }}>
+          <RowStat label="Protein" emoji="🥩" value={totals.protein} target={targets.protein} unit="g" kind="floor" gold={goldCards.protein} neutral={vacationActive}
+            note={[streaks.protein > 1 ? `🔥${streaks.protein}d` : null, weekComparison !== null && weekComparison !== 0 ? `${weekComparison > 0 ? '↑' : '↓'}${Math.abs(weekComparison)}g wk` : null].filter(Boolean).join(' · ') || null} />
+          <RowStat label="Net Carbs" emoji="🌾" value={totals.netCarbs} target={targets.netCarbs} unit="g" kind="ceiling" gold={goldCards.netCarbs} neutral={vacationActive}
+            note={streaks.netCarbs > 1 ? `🔥${streaks.netCarbs}d` : null} />
+          <RowStat label="Calories" emoji="🔥" value={netCalories} target={targets.calories} unit="" kind="ceiling" gold={goldCards.calories} neutral={vacationActive}
+            note={[caloriesBurned > 0 ? `-${Math.round(caloriesBurned)} burned` : null, streaks.calories > 1 ? `🔥${streaks.calories}d` : null].filter(Boolean).join(' · ') || null} />
+          <RowStat label="Fat" emoji="💧" value={totals.fat} target={targets.fat} unit="g" kind="floor" gold={goldCards.fat} neutral={vacationActive}
+            note={streaks.fat > 1 ? `🔥${streaks.fat}d` : null} />
+        </div>
+
+        <HydrationCard water={dayData.water} target={targets.water} onAdd={addWater} gold={goldCards.hydration} neutral={vacationActive} />
+
+        <button onClick={() => setShowRegulars(true)} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: `1px solid ${BORDER}`, width: '100%', textAlign: 'left' }}>
+          <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: LABEL, fontWeight: 600 }}>⭐ Frequent Foods</span>
+          <span style={{ color: MUTED, fontSize: 13 }}>{commonFoods.length ? `${commonFoods.length} saved →` : 'None yet →'}</span>
+        </button>
+
+        {mealTemplates.length > 0 && (
+          <button onClick={() => setShowTemplates(true)} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: `1px solid ${BORDER}`, width: '100%', textAlign: 'left' }}>
+            <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: LABEL, fontWeight: 600 }}>📋 Meal Templates</span>
+            <span style={{ color: MUTED, fontSize: 13 }}>{mealTemplates.length} saved →</span>
+          </button>
+        )}
+
+        {MEALS.map(m => (
+          <MealSection key={m.key} meal={m} foods={dayData.meals[m.key] || []}
+            expanded={!!expandedMeals[m.key]} onToggleExpand={() => setExpandedMeals({ ...expandedMeals, [m.key]: !expandedMeals[m.key] })}
+            onAdd={() => setAddFoodMeal(m.key)} onAiAdd={() => setAiMeal(m.key)} onRemove={(id) => removeFood(m.key, id)}
+            onEdit={(food) => setEditFood({ mealKey: m.key, food })} />
+        ))}
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <div className="card" style={{ padding: 12, display: 'flex', flexDirection: 'column', minHeight: 122 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 10.5, letterSpacing: '0.03em', textTransform: 'uppercase', color: LABEL, fontWeight: 600 }}>📏 Measure</span>
+              <button className="pill" style={{ padding: '4px 7px', fontSize: 10 }} onClick={() => setShowMeasureForm(true)}>+</button>
+            </div>
+            <div style={{ flex: 1 }}>
+              {totalInchesLost !== null ? (
+                <div><span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700, color: totalInchesLost > 0 ? '#16A34A' : TEXT }}>{totalInchesLost > 0 ? '-' : ''}{Math.abs(totalInchesLost).toFixed(1)}"</span></div>
+              ) : <div style={{ color: MUTED, fontSize: 11 }}>None yet.</div>}
+            </div>
+            <button onClick={() => setShowMeasureHistory(true)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 10, marginTop: 4, padding: 0, textAlign: 'left' }}>History →</button>
+          </div>
+
+          <div className={weightGold ? 'card gold-card' : 'card'} style={{ padding: 12, display: 'flex', flexDirection: 'column', minHeight: 122 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 10.5, letterSpacing: '0.03em', textTransform: 'uppercase', color: LABEL, fontWeight: 600 }}>Weight{weightGold && <span style={{ fontSize: 9, color: '#8A6D1D', fontWeight: 700, marginLeft: 5 }}>🔥{weightMilestoneLevel * 5}lb</span>}</span>
+              <button className="pill" style={{ padding: '4px 7px', fontSize: 10 }} onClick={() => setShowWeightForm(true)}>+</button>
+            </div>
+            <div style={{ flex: 1 }}>
+              {latestWeight ? (
+                <div>
+                  <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700 }}>{latestWeight}</span>
+                  {startWeight && startWeight !== latestWeight && <div style={{ color: '#16A34A', fontSize: 10.5, marginTop: 2 }}>📉 {(startWeight - latestWeight).toFixed(1)}</div>}
+                  {weeksToGoal !== null && <div style={{ color: MUTED, fontSize: 10, marginTop: 2 }}>~{weeksToGoal}wk to goal</div>}
+                </div>
+              ) : <div style={{ color: MUTED, fontSize: 11 }}>None yet.</div>}
+            </div>
+            <button onClick={() => setShowWeightHistory(true)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 10, marginTop: 4, padding: 0, textAlign: 'left' }}>History →</button>
+          </div>
+
+          <div className="card" style={{ padding: 12, display: 'flex', flexDirection: 'column', minHeight: 122 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: "'Oswald', sans-serif", fontSize: 10.5, letterSpacing: '0.03em', textTransform: 'uppercase', color: LABEL, fontWeight: 600 }}>♥ BP</span>
+              <button className="pill" style={{ padding: '4px 7px', fontSize: 10 }} onClick={() => setShowBpForm(true)}>+</button>
+            </div>
+            <div style={{ flex: 1 }}>
+              {latestBp ? (
+                <div><span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700 }}>{latestBp.systolic}/{latestBp.diastolic}</span>{latestBp.pulse && <span style={{ fontSize: 11, color: MUTED, marginLeft: 6 }}>♥ {latestBp.pulse}</span>}</div>
+              ) : <div style={{ color: MUTED, fontSize: 11 }}>None yet.</div>}
+            </div>
+            <button onClick={() => setShowBpHistory(true)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 10, marginTop: 4, padding: 0, textAlign: 'left' }}>History →</button>
+          </div>
+
+          <div className="card" style={{ padding: 12, display: 'flex', flexDirection: 'column', minHeight: 122 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 10.5, letterSpacing: '0.03em', textTransform: 'uppercase', color: LABEL, fontWeight: 600 }}>😴 Sleep</span>
+              <button className="pill" style={{ padding: '4px 7px', fontSize: 10 }} onClick={() => setShowSleepForm(true)}>+</button>
+            </div>
+            <div style={{ flex: 1 }}>
+              {latestSleep ? (
+                <button onClick={() => setEditSleep(latestSleep)} style={{ background: 'none', border: 'none', textAlign: 'left' }}>
+                  <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700 }}>{latestSleep.hours}<span style={{ fontSize: 11, color: MUTED, fontWeight: 500 }}> hrs</span></span>
+                  <div style={{ fontSize: 10, color: MUTED, marginTop: 2 }}>Q{latestSleep.quality}/5{latestSleep.bathroom ? ` · ${latestSleep.bathroom}x up` : ''} <span style={{ color: '#B8B5BD' }}>✎</span></div>
+                </button>
+              ) : <div style={{ color: MUTED, fontSize: 11 }}>Not logged today.</div>}
+            </div>
+            <button onClick={() => setShowSleepHistory(true)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 10, marginTop: 4, padding: 0, textAlign: 'left' }}>History →</button>
+          </div>
+        </div>
+
+        <div className={goldCards.training ? 'card gold-card' : 'card'} style={{ marginBottom: 20 }}>
+          <button onClick={() => setTrainingExpanded(!trainingExpanded)} style={{ display: 'grid', gridTemplateColumns: '105px 1fr auto', alignItems: 'center', width: '100%', background: 'none', border: 'none', textAlign: 'left', marginBottom: trainingExpanded ? 12 : 0, gap: 8 }}>
+            <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: LABEL, fontWeight: 600 }}>Training</span>
+            {!trainingExpanded && (
+              <span style={{ fontSize: 11.5, color: MUTED, textAlign: 'center' }}>
+                {dayData.workouts.length === 0 ? 'no sessions logged' : `${dayData.workouts.length} session${dayData.workouts.length > 1 ? 's' : ''}`}
+                {goldCards.training && ' · 🔥 7-day streak'}
+              </span>
+            )}
+            {trainingExpanded && goldCards.training && <span style={{ fontSize: 10, color: '#8A6D1D', fontWeight: 700, textAlign: 'center' }}>🔥 7-day streak</span>}
+            {trainingExpanded && !goldCards.training && <span />}
+            <span style={{ color: MUTED, fontSize: 12 }}>{trainingExpanded ? '▲' : '▼'}</span>
+          </button>
+          {trainingExpanded && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12, marginTop: -6 }}>
+                <button className="pill" onClick={() => setShowTrainingType(true)}>+ Log</button>
+              </div>
+              {dayData.workouts.length === 0 ? <div style={{ color: MUTED, fontSize: 13 }}>No sessions logged.</div> : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {dayData.workouts.map(w => {
+                    const pace = w.distance && w.duration ? fmtDuration(w.duration / w.distance) : null;
+                    return (
+                      <div key={w.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: `1px solid ${BORDER}` }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span>🏋</span>
+                          <div>
+                            <div style={{ fontSize: 14, fontWeight: 500 }}>{w.exerciseName || w.type}</div>
+                            <div style={{ fontSize: 11.5, color: MUTED }}>{w.sets ? w.sets.map(s => `${s.weight}×${s.reps}`).join(', ') : ''}{w.duration ? ` · ${durationLabel(w.duration)} min` : ''}{w.distance ? ` · ${w.distance} mi` : ''}{pace ? ` · ${pace} min/mi` : ''}{w.avgSpeed ? ` · ${w.avgSpeed} mph` : ''}{w.cadence ? ` · ${w.cadence} rpm` : ''}{!w.sets && w.weightLifted ? ` · ${w.weightLifted} lbs` : ''}{!w.sets && w.reps ? ` × ${w.reps} reps` : ''}{w.activeCalories ? ` · ${w.activeCalories} cal` : ''}{w.avgHeartRate ? ` · ${w.avgHeartRate} bpm avg` : ''}</div>
+                            {w.notes && <div style={{ fontSize: 11.5, color: MUTED }}>{w.notes}</div>}
+                          </div>
+                        </div>
+                        <button onClick={() => removeWorkout(w.id)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 15 }}>✕</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <button onClick={() => setShowTrainingHistory(true)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 11, marginTop: 10, padding: 0, textAlign: 'left' }}>History →</button>
+            </>
+          )}
+        </div>
+
+        <a href="https://www.dietdoctor.com" target="_blank" rel="noopener noreferrer" className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', textDecoration: 'none' }}>
+          <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: LABEL, fontWeight: 600 }}>🔗 Keto Resources</span>
+          <span style={{ color: MUTED, fontSize: 13 }}>Diet Doctor →</span>
+        </a>
+      </div>
+
+      {addFoodMeal && <FoodModal mealLabel={MEALS.find(m => m.key === addFoodMeal).label} onClose={() => setAddFoodMeal(null)}
+        onSave={(food) => { addFood(addFoodMeal, food); setAddFoodMeal(null); }} />}
+      {aiMeal && <AIAddModal mealLabel={MEALS.find(m => m.key === aiMeal).label} onClose={() => setAiMeal(null)}
+        onSave={(foods) => { addFoodBatch(aiMeal, foods, true); setAiMeal(null); }} />}
+      {editFood && <EditFoodModal food={editFood.food} onClose={() => setEditFood(null)}
+        onSave={(updates) => { updateFood(editFood.mealKey, editFood.food.id, updates); setEditFood(null); }}
+        onDelete={() => { removeFood(editFood.mealKey, editFood.food.id); setEditFood(null); }} />}
+      {pickMealFor && <MealPickerModal item={pickMealFor} onClose={() => setPickMealFor(null)} onPick={(mealKey) => logRegularsToMeal(pickMealFor, mealKey)} />}
+      {showTrainingHistory && (
+        <EntryHistoryModal title="Training History" entries={getAllTrainingHistory()} onClose={() => setShowTrainingHistory(false)}
+          renderRow={w => `${w.exerciseName || w.type}${w.sets ? ' · ' + w.sets.map(s => `${s.weight}×${s.reps}`).join(', ') : ''}${w.duration ? ` · ${durationLabel(w.duration)}min` : ''}${!w.sets && w.weightLifted ? ` · ${w.weightLifted}lbs×${w.reps || '?'}` : ''}${w.activeCalories ? ` · ${w.activeCalories}cal` : ''}`} />
+      )}
+      {showTemplates && (
+        <Modal title="📋 Meal Templates" onClose={() => setShowTemplates(false)}>
+          <TemplatesList templates={mealTemplates}
+            onPick={(t) => { setShowTemplates(false); setPickMealFor(t.items); }}
+            onDelete={(id) => persistTemplates(mealTemplates.filter(t => t.id !== id))} />
+        </Modal>
+      )}
+      {showRegulars && (
+        <Modal title="⭐ Frequent Foods" onClose={() => setShowRegulars(false)}>
+          <RegularsList regulars={regularsSorted} remaining={{ netCarbs: Math.max(0, targets.netCarbs - totals.netCarbs), calories: Math.max(0, targets.calories - netCalories) }}
+            onPick={(r) => { setShowRegulars(false); setPickMealFor(r); }} onEdit={(r) => { setShowRegulars(false); setEditRegular(r); }} onDelete={deleteRegular} onTogglePin={togglePinRegular}
+            onBatchPick={(items) => { setShowRegulars(false); setPickMealFor(items); }} onCleanup={runCleanupAndCategorize}
+            onSaveTemplate={(name, items) => { persistTemplates([...mealTemplates, { id: Date.now() + Math.random(), name, items }]); setShowRegulars(false); }} />
+        </Modal>
+      )}
+      {editRegular && <EditRegularModal item={editRegular} onClose={() => setEditRegular(null)}
+        onSave={(updates) => { updateRegular(editRegular.id, updates); setEditRegular(null); }} />}
+      {showTrainingType && <TrainingTypeModal onClose={() => setShowTrainingType(false)} onPick={(type) => { setPendingTrainingType(type); setShowTrainingType(false); setShowTrainingMethod(true); }} />}
+      {showTrainingMethod && <TrainingMethodModal type={pendingTrainingType} onClose={() => { setShowTrainingMethod(false); setPendingTrainingType(null); }}
+        onPick={(method) => { setShowTrainingMethod(false); if (method === 'manual') { if (pendingTrainingType === 'Strength') setShowExercisePicker(true); else setShowAddWorkout(true); } else setShowWorkoutAi(true); }} />}
+      {showExercisePicker && (
+        <ExercisePickerModal exercises={exerciseLibrary} onClose={() => { setShowExercisePicker(false); setPendingTrainingType(null); }}
+          onPick={(name) => {
+            const history = getExerciseHistory(name);
+            setPendingInitialSets(history.length > 0 ? history[0].sets : null);
+            setPendingExerciseName(name); setShowExercisePicker(false); setShowSetEntry(true);
+          }}
+          onTogglePin={toggleExercisePin} onDelete={deleteExercise} onViewHistory={(name) => setExerciseHistoryFor(name)} />
+      )}
+      {showSetEntry && (
+        <SetEntryModal exerciseName={pendingExerciseName} profileWeight={profile.currentWeight} initialSets={pendingInitialSets} history={getExerciseHistory(pendingExerciseName || '')} profileContext={buildProfileContext()}
+          onClose={() => { setShowSetEntry(false); setPendingExerciseName(null); setPendingInitialSets(null); setPendingTrainingType(null); }}
+          onSave={(w) => {
+            const priorHistory = getExerciseHistory(pendingExerciseName);
+            const priorMax = priorHistory.length > 0 ? Math.max(...priorHistory.flatMap(h => (h.sets || []).map(s => s.weight))) : null;
+            const newMax = Math.max(...w.sets.map(s => s.weight));
+            addWorkout(w); recordExerciseUse(pendingExerciseName);
+            if (priorMax !== null && newMax > priorMax) {
+              setPrMessage(`🎉 New PR on ${pendingExerciseName}! ${newMax} lbs`);
+              setConfettiFor('exercisePR');
+              setTimeout(() => { setConfettiFor(null); setPrMessage(null); }, 3200);
+            }
+            setShowSetEntry(false); setPendingExerciseName(null); setPendingInitialSets(null); setPendingTrainingType(null);
+          }} />
+      )}
+      {exerciseHistoryFor && (
+        <EntryHistoryModal title={`${exerciseHistoryFor} History`} entries={getExerciseHistory(exerciseHistoryFor)} onClose={() => setExerciseHistoryFor(null)}
+          renderRow={w => (w.sets || []).map(s => `${s.weight}×${s.reps}`).join(', ')} />
+      )}
+      {showAddWorkout && <WorkoutModal initialType={pendingTrainingType} profileWeight={profile.currentWeight} history={getTrainingTypeHistory(pendingTrainingType)} profileContext={buildProfileContext()} onClose={() => { setShowAddWorkout(false); setPendingTrainingType(null); }} onSave={(w) => { addWorkout(w); setShowAddWorkout(false); setPendingTrainingType(null); }} />}
+      {showWeightForm && <WeightModal onClose={() => setShowWeightForm(false)} onSave={(entry) => { persistWeight([...weightLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowWeightForm(false); }} />}
+      {showBpForm && <BpModal onClose={() => setShowBpForm(false)} onSave={(entry) => { persistBp([...bpLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowBpForm(false); }} />}
+      {showMeasureForm && <MeasureModal onClose={() => setShowMeasureForm(false)} onSave={(entry) => { persistMeasure([...measureLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowMeasureForm(false); }} />}
+      {showSleepForm && <SleepModal forDate={selectedDate} onClose={() => setShowSleepForm(false)} onSave={(entry) => { persistSleep([...sleepLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowSleepForm(false); }} />}
+      {editSleep && <SleepModal initial={editSleep} onClose={() => setEditSleep(null)} onSave={(entry) => { updateSleep(entry.id, entry); setEditSleep(null); }} />}
+      {showWorkoutAi && <WorkoutAiModal initialType={pendingTrainingType} onClose={() => { setShowWorkoutAi(false); setPendingTrainingType(null); }} onSave={(w) => { addWorkout(w); setShowWorkoutAi(false); setPendingTrainingType(null); }} />}
+      {showSettings && <SettingsModal profile={profile} onClose={() => setShowSettings(false)} onSave={(p) => { save('kt-profile', p); setProfile(p); setShowSettings(false); }}
+        onExport={exportCSV} onShowHome={() => { setShowSettings(false); setShowHome(true); }} onShowHistory={() => { setShowSettings(false); setShowHistory(true); }}
+        onShowCoach={() => { setShowSettings(false); runSmartCoach(); }} onReconnect={() => { setShowSettings(false); setShowReconnect(true); }}
+        nightModeSetting={nightModeSetting} onSetNightMode={persistNightMode} vacation={vacation} vacationActive={vacationActive} onSetVacation={setVacationMode} />}
+      {showHistory && <HistoryModal targets={targets} weightLog={weightLog} onClose={() => setShowHistory(false)} />}
+      {showWeightHistory && <EntryHistoryModal title="Weight History" entries={weightLog} onClose={() => setShowWeightHistory(false)} renderRow={e => `${e.weight} lbs`} />}
+      {showBpHistory && <EntryHistoryModal title="Blood Pressure History" entries={bpLog} onClose={() => setShowBpHistory(false)} renderRow={e => `${e.systolic}/${e.diastolic}${e.pulse ? ' · ♥' + e.pulse : ''}`} />}
+      {showMeasureHistory && <EntryHistoryModal title="Measurements History" entries={measureLog} onClose={() => setShowMeasureHistory(false)} renderRow={e => [e.waist && `W:${e.waist}`, e.chest && `C:${e.chest}`, e.hips && `H:${e.hips}`, e.arms && `A:${e.arms}`, e.thighs && `T:${e.thighs}`].filter(Boolean).join(' ')} />}
+      {showSleepHistory && <EntryHistoryModal title="Sleep History" entries={sleepLog} onClose={() => setShowSleepHistory(false)} renderRow={e => `${e.hours} hrs · Q${e.quality}/5${e.bathroom ? ` · ${e.bathroom}x up` : ''}`} />}
+      {showHome && <Modal title="Add to Home Screen" onClose={() => setShowHome(false)}><HomeScreenSteps /></Modal>}
+      {popup && <MacroPopup data={popup} onClose={() => setPopup(null)} />}
+      {confettiFor && <ConfettiOverlay />}
+      {prMessage && (
+        <div style={{ position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)', background: '#FFF7E0', border: '1.5px solid #E8C55A', borderRadius: 12, padding: '12px 20px', fontWeight: 700, fontSize: 14, color: '#8A6D1D', zIndex: 999, boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}>{prMessage}</div>
+      )}
+      {showCoach && <SmartCoachModal loading={coachLoading} text={coachText} error={coachError} onClose={() => setShowCoach(false)} onRetry={runSmartCoach} />}
+    </div>
+  );
+}
+
+function ProfileSetup({ onDone, onReconnect }) {
+  const [f, setF] = useState({ name: '', age: '', height: '', currentWeight: '', goalWeight: '' });
+  const [t, setT] = useState(DEFAULT_TARGETS);
+  const [showForm, setShowForm] = useState(false);
+  const [selectedLevel, setSelectedLevel] = useState(null);
+  const num = (v) => parseFloat(v) || 0;
+
+  const pickLevel = (level) => {
+    if (level) {
+      setT({ calories: level.calories, protein: level.protein, netCarbs: level.carbs, fat: level.fat, water: level.water });
+      setSelectedLevel(level.num);
+    } else {
+      setSelectedLevel(null);
+    }
+    setShowForm(true);
+  };
+
+  const updateTarget = (key, value) => {
+    setT(prev => ({ ...prev, [key]: value }));
+    setSelectedLevel(null); // any manual edit clears the "Level N selected" tag
+  };
+
+  const submit = () => {
+    if (!f.name || !f.currentWeight) return;
+    onDone({ name: f.name, age: num(f.age), height: f.height, currentWeight: num(f.currentWeight), goalWeight: num(f.goalWeight) || num(f.currentWeight), targets: t });
+  };
+
+  if (!showForm) {
+    return (
+      <div style={{ background: GRAY, minHeight: '100vh', fontFamily: "'Inter', sans-serif", color: TEXT, padding: '30px 20px' }}>
+        <div style={{ maxWidth: 440, margin: '0 auto' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <img src="/leaf-icon.png" alt="" style={{ width: 22, height: 'auto' }} />
+            <h1 style={{ fontFamily: "'Oswald', sans-serif", fontSize: 22, fontWeight: 700, color: WHITE, margin: 0 }}>Choose Your Starting Point</h1>
+          </div>
+          <p style={{ color: '#C9C6CA', fontSize: 13, marginBottom: 20, lineHeight: 1.5 }}>Pick a level to pre-fill your daily targets, or enter your own numbers manually.</p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
+            {LEVELS.map(level => (
+              <button key={level.num} onClick={() => pickLevel(level)} style={{ background: WHITE, border: 'none', borderRadius: 14, padding: '16px 14px', textAlign: 'left', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+                <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 15, fontWeight: 700, color: LABEL, marginBottom: 6 }}>Level {level.num}</div>
+                <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 22, fontWeight: 700, color: TEXT }}>{level.carbs}<span style={{ fontSize: 11, color: MUTED, fontWeight: 500, display: 'block', marginTop: 2 }}>g carbs / day</span></div>
+              </button>
+            ))}
+            <button onClick={() => pickLevel(null)} style={{ background: 'transparent', border: '1.5px dashed rgba(255,255,255,0.5)', borderRadius: 14, padding: '16px 14px', textAlign: 'left' }}>
+              <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 14, fontWeight: 700, color: WHITE, marginBottom: 4 }}>Manual Entry</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}>Set your own targets</div>
+            </button>
+          </div>
+
+          <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: 10, padding: '12px 14px', fontSize: 11, color: '#D9D6DA', lineHeight: 1.5 }}>
+            These are general starting points, not medical advice. Talk to a doctor before starting a very low-carb diet, especially if you have diabetes, kidney issues, or take medications affected by carb intake.
+          </div>
+
+          {onReconnect && (
+            <button onClick={onReconnect} style={{ width: '100%', background: 'none', border: 'none', color: 'rgba(255,255,255,0.75)', fontSize: 12.5, marginTop: 16, padding: 8, textAlign: 'center' }}>Already have data on another device? Reconnect →</button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ background: GRAY, minHeight: '100vh', fontFamily: "'Inter', sans-serif", color: TEXT, padding: '30px 20px' }}>
+      <div style={{ maxWidth: 440, margin: '0 auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          <img src="/leaf-icon.png" alt="" style={{ width: 22, height: 'auto' }} />
+          <h1 style={{ fontFamily: "'Oswald', sans-serif", fontSize: 24, fontWeight: 700, color: WHITE, margin: 0 }}>Welcome to CarbTrack</h1>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+          <p style={{ color: '#C9C6CA', fontSize: 13, margin: 0 }}>Set up your profile to get started.</p>
+          <button onClick={() => setShowForm(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', fontSize: 12, textDecoration: 'underline' }}>← back</button>
+        </div>
+
+        <div style={{ background: WHITE, borderRadius: 14, padding: 20 }}>
+          <Field label="Name"><input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="Your name" /></Field>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <Field label="Age"><input type="number" value={f.age} onChange={e => setF({ ...f, age: e.target.value })} /></Field>
+            <Field label="Height"><input value={f.height} onChange={e => setF({ ...f, height: e.target.value })} placeholder={"e.g. 5'10\""} /></Field>
+            <Field label="Current weight (lbs)"><input type="number" value={f.currentWeight} onChange={e => setF({ ...f, currentWeight: e.target.value })} /></Field>
+            <Field label="Goal weight (lbs)"><input type="number" value={f.goalWeight} onChange={e => setF({ ...f, goalWeight: e.target.value })} /></Field>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, marginBottom: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: LABEL, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Daily Targets — suggested, edit as you like</div>
+            {selectedLevel && <span style={{ fontSize: 10.5, fontWeight: 700, color: WHITE, background: BURGUNDY, borderRadius: 20, padding: '3px 9px' }}>Level {selectedLevel} selected</span>}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <Field label="Calories"><input type="number" value={t.calories} onChange={e => updateTarget('calories', num(e.target.value))} /></Field>
+            <Field label="Protein Goal (g)"><input type="number" value={t.protein} onChange={e => updateTarget('protein', num(e.target.value))} /></Field>
+            <Field label="Net carb ceiling (g)"><input type="number" value={t.netCarbs} onChange={e => updateTarget('netCarbs', num(e.target.value))} /></Field>
+            <Field label="Fat Goal (g)"><input type="number" value={t.fat} onChange={e => updateTarget('fat', num(e.target.value))} /></Field>
+            <Field label="Hydration Goal (oz)"><input type="number" value={t.water} onChange={e => updateTarget('water', num(e.target.value))} /></Field>
+          </div>
+
+          <PrimaryButton onClick={submit} label="Start Tracking" />
+        </div>
+
+        <div style={{ marginTop: 16, padding: '12px 14px', background: 'rgba(255,255,255,0.08)', borderRadius: 10, fontSize: 12, color: '#D9D6DA', lineHeight: 1.5 }}>
+          Your data syncs automatically to the cloud once you set up a PIN next, so it's protected even if you switch phones or clear your browser. Until then, it's saved only on this device.
+        </div>
+
+        <div style={{ marginTop: 16, padding: '14px 16px', background: WHITE, borderRadius: 12 }}>
+          <div style={{ fontFamily: "'Oswald', sans-serif", fontWeight: 700, fontSize: 13, color: LABEL, marginBottom: 10 }}>📱 Add CarbTrack to Your Home Screen</div>
+          <HomeScreenSteps />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------- PIN protection ----------
+function PinSetupScreen({ onDone }) {
+  const [pin, setPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [birthYear, setBirthYear] = useState('');
+  const [error, setError] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [showReconnect, setShowReconnect] = useState(false);
+
+  const submit = async () => {
+    setError(null);
+    if (!/^\d{4,6}$/.test(pin)) { setError('PIN should be 4-6 digits.'); return; }
+    if (pin !== confirmPin) { setError("PINs don't match."); return; }
+    const yearNum = parseInt(birthYear);
+    if (!yearNum || yearNum < 1900 || yearNum > new Date().getFullYear()) { setError('Enter a valid birth year.'); return; }
+    setSaving(true);
+    try {
+      const deviceId = getDeviceId();
+      const res = await fetch('/api/auth?action=setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deviceId, pin, birthYear: yearNum }) });
+      if (!res.ok) throw new Error('failed');
+      onDone();
+    } catch (e) {
+      setError("Couldn't reach the server to save your PIN. Check your connection and try again, or skip for now.");
+    }
+    setSaving(false);
+  };
+
+  if (showReconnect) return <PinReconnectScreen onBack={() => setShowReconnect(false)} />;
+
+  return (
+    <div style={{ background: GRAY, minHeight: '100vh', fontFamily: "'Inter', sans-serif", color: TEXT, padding: '30px 20px', display: 'flex', alignItems: 'center' }}>
+      <div style={{ maxWidth: 400, margin: '0 auto', width: '100%' }}>
+        <h1 style={{ fontFamily: "'Oswald', sans-serif", fontSize: 22, fontWeight: 700, color: WHITE, marginBottom: 8 }}>Protect Your Data</h1>
+        <p style={{ color: '#C9C6CA', fontSize: 13, marginBottom: 20, lineHeight: 1.5 }}>
+          Your data now lives in the cloud, not just this device. Set a PIN so it can't be accessed from another phone without it. You'll only need to re-enter it about once a month, not every time you open the app.
+        </p>
+        <div style={{ background: WHITE, borderRadius: 14, padding: 20 }}>
+          <Field label="Choose a PIN (4-6 digits)"><input type="tel" inputMode="numeric" value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, ''))} maxLength={6} /></Field>
+          <Field label="Confirm PIN"><input type="tel" inputMode="numeric" value={confirmPin} onChange={e => setConfirmPin(e.target.value.replace(/\D/g, ''))} maxLength={6} /></Field>
+          <Field label="Birth year (used only if you forget your PIN)"><input type="number" inputMode="numeric" value={birthYear} onChange={e => setBirthYear(e.target.value)} placeholder="e.g. 1967" /></Field>
+          {error && <div style={{ color: RED, fontSize: 12.5, marginBottom: 10 }}>{error}</div>}
+          <PrimaryButton onClick={submit} label={saving ? 'Saving…' : 'Set PIN'} disabled={saving} />
+          <button onClick={onDone} style={{ width: '100%', background: 'none', border: 'none', color: MUTED, fontSize: 12.5, marginTop: 10, padding: 8 }}>Skip for now</button>
+        </div>
+        <button onClick={() => setShowReconnect(true)} style={{ width: '100%', background: 'none', border: 'none', color: 'rgba(255,255,255,0.75)', fontSize: 12.5, marginTop: 16, padding: 8, textAlign: 'center' }}>Already have data on another device? Reconnect →</button>
+      </div>
+    </div>
+  );
+}
+
+function PinReconnectScreen({ onBack }) {
+  const [pin, setPin] = useState('');
+  const [birthYear, setBirthYear] = useState('');
+  const [error, setError] = useState(null);
+  const [checking, setChecking] = useState(false);
+
+  const submit = async () => {
+    setError(null);
+    if (!pin || !birthYear) { setError('Enter both your PIN and birth year.'); return; }
+    setChecking(true);
+    try {
+      const res = await fetch('/api/auth?action=reconnect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pin, birthYear: parseInt(birthYear) }) });
+      const data = await res.json();
+      if (data.valid && data.deviceId) {
+        localStorage.setItem('kt-device-id', data.deviceId);
+        window.location.reload(); // fresh load pulls this device's data from the cloud under the adopted ID
+      } else {
+        setError("That PIN and birth year combination doesn't match any existing data.");
+      }
+    } catch (e) {
+      setError("Couldn't reach the server. Check your connection and try again.");
+    }
+    setChecking(false);
+  };
+
+  return (
+    <div style={{ background: GRAY, minHeight: '100vh', fontFamily: "'Inter', sans-serif", color: TEXT, padding: '30px 20px', display: 'flex', alignItems: 'center' }}>
+      <div style={{ maxWidth: 400, margin: '0 auto', width: '100%' }}>
+        <h1 style={{ fontFamily: "'Oswald', sans-serif", fontSize: 22, fontWeight: 700, color: WHITE, marginBottom: 8 }}>Reconnect to Your Data</h1>
+        <p style={{ color: '#C9C6CA', fontSize: 13, marginBottom: 20, lineHeight: 1.5 }}>Enter the PIN and birth year from your other device to bring your data here.</p>
+        <div style={{ background: WHITE, borderRadius: 14, padding: 20 }}>
+          <Field label="PIN"><input type="tel" inputMode="numeric" value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, ''))} maxLength={6} autoFocus /></Field>
+          <Field label="Birth year"><input type="number" inputMode="numeric" value={birthYear} onChange={e => setBirthYear(e.target.value)} /></Field>
+          {error && <div style={{ color: RED, fontSize: 12.5, marginBottom: 10 }}>{error}</div>}
+          <PrimaryButton onClick={submit} label={checking ? 'Checking…' : 'Reconnect'} disabled={checking} />
+          <button onClick={onBack} style={{ width: '100%', background: 'none', border: 'none', color: MUTED, fontSize: 12.5, marginTop: 10, padding: 8 }}>← Back</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PinVerifyScreen({ onUnlocked }) {
+  const [pin, setPin] = useState('');
+  const [error, setError] = useState(null);
+  const [checking, setChecking] = useState(false);
+  const [showRecover, setShowRecover] = useState(false);
+
+  const submit = async () => {
+    setError(null);
+    setChecking(true);
+    try {
+      const deviceId = getDeviceId();
+      const res = await fetch('/api/auth?action=verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deviceId, pin }) });
+      const data = await res.json();
+      if (data.valid) onUnlocked();
+      else setError('Incorrect PIN. Try again.');
+    } catch (e) {
+      setError("Couldn't reach the server. Check your connection and try again.");
+    }
+    setChecking(false);
+  };
+
+  if (showRecover) return <PinRecoverScreen onDone={onUnlocked} onBack={() => setShowRecover(false)} />;
+
+  return (
+    <div style={{ background: GRAY, minHeight: '100vh', fontFamily: "'Inter', sans-serif", color: TEXT, padding: '30px 20px', display: 'flex', alignItems: 'center' }}>
+      <div style={{ maxWidth: 400, margin: '0 auto', width: '100%' }}>
+        <h1 style={{ fontFamily: "'Oswald', sans-serif", fontSize: 22, fontWeight: 700, color: WHITE, marginBottom: 8 }}>Enter Your PIN</h1>
+        <p style={{ color: '#C9C6CA', fontSize: 13, marginBottom: 20 }}>Monthly check-in to keep your cloud data protected.</p>
+        <div style={{ background: WHITE, borderRadius: 14, padding: 20 }}>
+          <Field label="PIN"><input type="tel" inputMode="numeric" value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, ''))} maxLength={6} autoFocus /></Field>
+          {error && <div style={{ color: RED, fontSize: 12.5, marginBottom: 10 }}>{error}</div>}
+          <PrimaryButton onClick={submit} label={checking ? 'Checking…' : 'Unlock'} disabled={checking} />
+          <button onClick={() => setShowRecover(true)} style={{ width: '100%', background: 'none', border: 'none', color: LABEL, fontSize: 12.5, marginTop: 10, padding: 8, fontWeight: 600 }}>Forgot your PIN?</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PinRecoverScreen({ onDone, onBack }) {
+  const [birthYear, setBirthYear] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [error, setError] = useState(null);
+  const [checking, setChecking] = useState(false);
+
+  const submit = async () => {
+    setError(null);
+    if (!/^\d{4,6}$/.test(newPin)) { setError('New PIN should be 4-6 digits.'); return; }
+    if (newPin !== confirmPin) { setError("PINs don't match."); return; }
+    setChecking(true);
+    try {
+      const deviceId = getDeviceId();
+      const res = await fetch('/api/auth?action=recover', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deviceId, birthYear: parseInt(birthYear), newPin }) });
+      const data = await res.json();
+      if (data.valid) onDone();
+      else setError('That birth year doesn\'t match what we have on file.');
+    } catch (e) {
+      setError("Couldn't reach the server. Check your connection and try again.");
+    }
+    setChecking(false);
+  };
+
+  return (
+    <div style={{ background: GRAY, minHeight: '100vh', fontFamily: "'Inter', sans-serif", color: TEXT, padding: '30px 20px', display: 'flex', alignItems: 'center' }}>
+      <div style={{ maxWidth: 400, margin: '0 auto', width: '100%' }}>
+        <h1 style={{ fontFamily: "'Oswald', sans-serif", fontSize: 22, fontWeight: 700, color: WHITE, marginBottom: 8 }}>Reset Your PIN</h1>
+        <p style={{ color: '#C9C6CA', fontSize: 13, marginBottom: 20 }}>Confirm your birth year to set a new PIN.</p>
+        <div style={{ background: WHITE, borderRadius: 14, padding: 20 }}>
+          <Field label="Birth year"><input type="number" inputMode="numeric" value={birthYear} onChange={e => setBirthYear(e.target.value)} /></Field>
+          <Field label="New PIN (4-6 digits)"><input type="tel" inputMode="numeric" value={newPin} onChange={e => setNewPin(e.target.value.replace(/\D/g, ''))} maxLength={6} /></Field>
+          <Field label="Confirm new PIN"><input type="tel" inputMode="numeric" value={confirmPin} onChange={e => setConfirmPin(e.target.value.replace(/\D/g, ''))} maxLength={6} /></Field>
+          {error && <div style={{ color: RED, fontSize: 12.5, marginBottom: 10 }}>{error}</div>}
+          <PrimaryButton onClick={submit} label={checking ? 'Checking…' : 'Set New PIN'} disabled={checking} />
+          <button onClick={onBack} style={{ width: '100%', background: 'none', border: 'none', color: MUTED, fontSize: 12.5, marginTop: 10, padding: 8 }}>← Back</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Frequent Foods ----------
+function RegularsList({ regulars, remaining, onEdit, onDelete, onTogglePin, onBatchPick, onCleanup, onSaveTemplate }) {
+  const [cart, setCart] = useState({}); // { [id]: { qty (base units), displayQty, displayUnit } }
+  const [qtyPromptFor, setQtyPromptFor] = useState(null); // regular awaiting a unit/quantity entry
+  const [whatFits, setWhatFits] = useState(false);
+  const [cleanupMsg, setCleanupMsg] = useState(null);
+  const [search, setSearch] = useState('');
+  const q = search.trim().toLowerCase();
+
+  const tapItem = (r) => {
+    if (cart[r.id] !== undefined) {
+      // already in the cart — tapping again removes it directly, no prompt needed
+      setCart(prev => { const next = { ...prev }; delete next[r.id]; return next; });
+    } else if (r.alwaysOne) {
+      const baseUnit = CATEGORY_UNITS[r.category] ? CATEGORY_UNITS[r.category].baseUnit : 'pc';
+      setCart(prev => ({ ...prev, [r.id]: { qty: 1, displayQty: 1, displayUnit: baseUnit } }));
+    } else {
+      setQtyPromptFor(r);
+    }
+  };
+  const confirmQty = (id, selection) => { setCart(prev => ({ ...prev, [id]: selection })); setQtyPromptFor(null); };
+
+  const fits = (r) => {
+    if (!whatFits) return true;
+    const netC = Math.max(0, r.carbs - r.fiber);
+    return netC <= remaining.netCarbs && r.calories <= remaining.calories;
+  };
+  const visible = regulars.filter(fits).filter(r => !q || String(r.name || '').toLowerCase().includes(q));
+
+  const groups = {};
+  visible.forEach(r => { const key = r.restaurant || 'Other'; (groups[key] = groups[key] || []).push(r); });
+  const hasRestaurants = visible.some(r => r.restaurant);
+  const groupKeys = hasRestaurants ? Object.keys(groups) : ['Other'];
+
+  const confirmBatch = () => {
+    const items = regulars.filter(r => cart[r.id] !== undefined).map(r => ({ ...r, ...cart[r.id] }));
+    if (items.length) onBatchPick(items);
+    setCart({});
+  };
+
+  const saveTemplate = () => {
+    const items = regulars.filter(r => cart[r.id] !== undefined).map(r => {
+      const { qty, displayQty, displayUnit } = cart[r.id];
+      const name = displayQty !== 1 ? `${displayQty} ${displayUnit} ${r.name}` : r.name;
+      return { name, protein: r.protein * qty, carbs: r.carbs * qty, fiber: r.fiber * qty, fat: r.fat * qty, calories: r.calories * qty };
+    });
+    if (items.length === 0) return;
+    const name = window.prompt('Name this template (e.g. "My usual breakfast"):');
+    if (!name) return;
+    onSaveTemplate(name, items);
+    setCart({});
+  };
+
+  const runCleanup = () => {
+    const n = onCleanup();
+    setCleanupMsg(n > 0 ? `Merged ${n} duplicate${n > 1 ? 's' : ''}.` : 'No duplicates found.');
+    setTimeout(() => setCleanupMsg(null), 3000);
+  };
+
+  const cartCount = Object.keys(cart).length;
+
+  return (
+    <div>
+      <div style={{ position: 'relative', marginBottom: 10 }}>
+        <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search frequent foods" autoCapitalize="off" autoCorrect="off" style={{ paddingRight: 36 }} />
+        {search && <button onClick={() => setSearch('')} aria-label="Clear search" style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: MUTED, fontSize: 18, padding: '4px 8px', lineHeight: 1 }}>✕</button>}
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <button onClick={() => setWhatFits(!whatFits)} style={{ flex: 1, padding: 8, borderRadius: 8, border: `1.5px solid ${whatFits ? BURGUNDY : BORDER}`, background: whatFits ? 'var(--track-bg)' : 'var(--input-bg)', color: whatFits ? LABEL : MUTED, fontWeight: 600, fontSize: 12 }}>{whatFits ? 'Showing what fits' : 'What fits?'}</button>
+        <button onClick={runCleanup} style={{ padding: '8px 12px', borderRadius: 8, border: `1.5px solid ${BORDER}`, background: 'var(--input-bg)', color: MUTED, fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap' }}>Clean Up</button>
+      </div>
+      {cleanupMsg && <div style={{ fontSize: 12, color: '#2E7D32', marginBottom: 10 }}>{cleanupMsg}</div>}
+
+      {visible.length === 0 ? (
+        <div style={{ color: MUTED, fontSize: 13 }}>{regulars.length === 0 ? "Log a few foods and they'll show up here for quick re-adding." : (q ? "No matches." : "Nothing fits your remaining macros right now.")}</div>
+      ) : (
+        groupKeys.map(gk => (
+          <div key={gk || 'all'} style={{ marginBottom: hasRestaurants ? 14 : 0 }}>
+            {hasRestaurants && <div style={{ fontSize: 11, fontWeight: 700, color: LABEL, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>{gk}</div>}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {groups[gk].map(r => {
+                const inCart = cart[r.id] !== undefined;
+                return (
+                  <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 0', borderBottom: `1px solid ${BORDER}` }}>
+                    <button onClick={() => tapItem(r)} style={{ background: 'none', border: 'none', flexShrink: 0 }}>
+                      <div style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${inCart ? BURGUNDY : '#C9C6D1'}`, background: inCart ? BURGUNDY : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {inCart && <span style={{ color: WHITE, fontSize: 11, fontWeight: 700 }}>✓</span>}
+                      </div>
+                    </button>
+                    <button onClick={() => tapItem(r)} style={{ background: 'none', border: 'none', textAlign: 'left', flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 5 }}>
+                        {r.pinned && <span style={{ fontSize: 11 }}>📌</span>}
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
+                        {inCart && <span style={{ fontSize: 11.5, color: LABEL, fontWeight: 700 }}>× {cart[r.id].displayQty} {cart[r.id].displayUnit}</span>}
+                      </div>
+                      <div style={{ fontSize: 12, color: MUTED }}>{Math.round(r.protein)}g P · {Math.max(0, Math.round(r.carbs - r.fiber))}g net C</div>
+                    </button>
+                    <button onClick={() => onTogglePin(r.id)} style={{ background: 'none', border: 'none', color: r.pinned ? LABEL : '#C9C6D1', fontSize: 15 }}>📌</button>
+                    <button onClick={() => onEdit(r)} style={{ background: 'none', border: 'none', color: '#B8B5BD', fontSize: 14 }}>✎</button>
+                    <button onClick={() => onDelete(r.id)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 15 }}>✕</button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))
+      )}
+
+      {cartCount > 0 && (
+        <div style={{ position: 'sticky', bottom: 0, left: 0, right: 0, background: 'var(--card-bg)', paddingTop: 10, marginTop: 14, boxShadow: '0 -8px 12px -6px rgba(0,0,0,0.08)', display: 'flex', gap: 8 }}>
+          <button onClick={saveTemplate} style={{ flex: 1, background: 'var(--card-bg)', border: `1.5px solid ${BURGUNDY}`, borderRadius: 9, padding: 13, color: LABEL, fontWeight: 700, fontSize: 13 }}>Save as Template</button>
+          <div style={{ flex: 1 }}><PrimaryButton onClick={confirmBatch} label={`Add ${cartCount}`} /></div>
+        </div>
+      )}
+
+      {qtyPromptFor && (
+        <UnitPickerModal item={qtyPromptFor} onCancel={() => setQtyPromptFor(null)} onConfirm={(selection) => confirmQty(qtyPromptFor.id, selection)} />
+      )}
+    </div>
+  );
+}
+
+function UnitPickerModal({ item, onCancel, onConfirm }) {
+  const category = item.category && CATEGORY_UNITS[item.category] ? item.category : 'piece'; // uncategorized foods default to piece until the AI sweep runs
+  const catInfo = CATEGORY_UNITS[category];
+  const [selectedUnit, setSelectedUnit] = useState(catInfo.baseUnit);
+  const [val, setVal] = useState('1');
+  const unitInfo = catInfo.options.find(o => o.unit === selectedUnit) || catInfo.options[0];
+
+  const submit = () => {
+    const rawQty = parseFloat(val);
+    if (!rawQty || rawQty <= 0) return;
+    const baseQty = rawQty * unitInfo.toBase; // convert to base-unit quantity for correct macro math
+    onConfirm({ qty: baseQty, displayQty: rawQty, displayUnit: selectedUnit });
+  };
+
+  return (
+    <Modal title={item.name} onClose={onCancel}>
+      {catInfo.options.length > 1 && (
+        <>
+          <div style={{ fontSize: 12, fontWeight: 600, color: LABEL, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>Unit</div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+            {catInfo.options.map(o => (
+              <button key={o.unit} onClick={() => setSelectedUnit(o.unit)} style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: `1.5px solid ${selectedUnit === o.unit ? BURGUNDY : BORDER}`, background: selectedUnit === o.unit ? BURGUNDY : 'transparent', color: selectedUnit === o.unit ? WHITE : TEXT, fontWeight: 600, fontSize: 12.5 }}>{o.unit}</button>
+            ))}
+          </div>
+        </>
+      )}
+      <Field label={`Quantity (${selectedUnit})`}><input type="number" inputMode="decimal" value={val} onChange={e => setVal(e.target.value)} autoFocus onKeyDown={e => e.key === 'Enter' && submit()} /></Field>
+      <div style={{ fontSize: 12, color: MUTED, marginBottom: 12 }}>Per {catInfo.baseUnit}: {Math.round(item.protein)}g P · {Math.max(0, Math.round(item.carbs - item.fiber))}g net C · {Math.round(item.calories)} cal</div>
+      <PrimaryButton onClick={submit} label="Add to Selection" />
+    </Modal>
+  );
+}
+
+function TemplatesList({ templates, onPick, onDelete }) {
+  if (templates.length === 0) return <div style={{ color: MUTED, fontSize: 13 }}>No templates saved yet. Check off a few items in Frequent Foods and tap "Save as Template."</div>;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {templates.map(t => {
+        const totals = t.items.reduce((acc, i) => ({ protein: acc.protein + i.protein, netC: acc.netC + Math.max(0, i.carbs - i.fiber), calories: acc.calories + i.calories }), { protein: 0, netC: 0, calories: 0 });
+        return (
+          <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 0', borderBottom: `1px solid ${BORDER}` }}>
+            <button onClick={() => onPick(t)} style={{ background: 'none', border: 'none', textAlign: 'left', flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>{t.name}</div>
+              <div style={{ fontSize: 12, color: MUTED }}>{t.items.length} item{t.items.length > 1 ? 's' : ''} · {Math.round(totals.protein)}g P · {Math.round(totals.netC)}g net C · {Math.round(totals.calories)} cal</div>
+            </button>
+            <button onClick={() => onDelete(t.id)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 15 }}>✕</button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function MealPickerModal({ item, onClose, onPick }) {
+  const list = Array.isArray(item) ? item : [item];
+  const title = list.length > 1 ? `Log ${list.length} items to…` : `Log "${list[0].name}" to…`;
+  return (
+    <Modal title={title} onClose={onClose}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {MEALS.map(m => (
+          <button key={m.key} onClick={() => onPick(m.key)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 14, border: `1px solid ${BORDER}`, borderRadius: 10, background: WHITE, fontSize: 14, fontWeight: 600, color: TEXT }}>
+            <span>{m.emoji}</span> {m.label}
+          </button>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
+function EditRegularModal({ item, onClose, onSave }) {
+  const [f, setF] = useState({ category: 'piece', ...item });
+  const num = (v) => parseFloat(v) || 0;
+  const baseUnit = CATEGORY_UNITS[f.category] ? CATEGORY_UNITS[f.category].baseUnit : 'pc';
+  const submit = () => onSave({ name: f.name, protein: num(f.protein), carbs: num(f.carbs), fiber: num(f.fiber), fat: num(f.fat), calories: num(f.calories), restaurant: f.restaurant || null, category: f.category || 'piece', alwaysOne: !!f.alwaysOne });
+  return (
+    <Modal title="Edit Regular" onClose={onClose}>
+      <Field label="Food name"><input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} /></Field>
+      <Field label="Category (determines which units it can be logged in)">
+        <select value={f.category || 'piece'} onChange={e => setF({ ...f, category: e.target.value })}>
+          {Object.keys(CATEGORY_UNITS).map(cat => <option key={cat} value={cat}>{CATEGORY_LABELS[cat]}</option>)}
+        </select>
+      </Field>
+      <button onClick={() => setF({ ...f, alwaysOne: !f.alwaysOne })} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', padding: 0, marginBottom: 14 }}>
+        <div style={{ width: 18, height: 18, borderRadius: 5, border: `1.5px solid ${f.alwaysOne ? BURGUNDY : '#C9C6D1'}`, background: f.alwaysOne ? BURGUNDY : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          {f.alwaysOne && <span style={{ color: WHITE, fontSize: 11, fontWeight: 700 }}>✓</span>}
+        </div>
+        <span style={{ fontSize: 13, color: TEXT }}>Always just 1 — skip the unit picker, add directly</span>
+      </button>
+      <Field label="Restaurant (optional, for grouping)"><input value={f.restaurant || ''} onChange={e => setF({ ...f, restaurant: e.target.value })} placeholder="e.g. Sonic" /></Field>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <Field label={`Protein (g) per ${baseUnit}`}><input type="number" value={f.protein} onChange={e => setF({ ...f, protein: e.target.value })} /></Field>
+        <Field label={`Fat (g) per ${baseUnit}`}><input type="number" value={f.fat} onChange={e => setF({ ...f, fat: e.target.value })} /></Field>
+        <Field label={`Total carbs (g) per ${baseUnit}`}><input type="number" value={f.carbs} onChange={e => setF({ ...f, carbs: e.target.value })} /></Field>
+        <Field label={`Fiber (g) per ${baseUnit}`}><input type="number" value={f.fiber} onChange={e => setF({ ...f, fiber: e.target.value })} /></Field>
+      </div>
+      <Field label={`Calories per ${baseUnit}`}><input type="number" value={f.calories} onChange={e => setF({ ...f, calories: e.target.value })} /></Field>
+      <PrimaryButton onClick={submit} />
+    </Modal>
+  );
+}
+
+function MealSection({ meal, foods, expanded, onToggleExpand, onAdd, onAiAdd, onRemove, onEdit }) {
+  const totals = foods.reduce((acc, f) => { const e = effective(f); return { protein: acc.protein + e.protein, netC: acc.netC + Math.max(0, e.carbs - e.fiber), calories: acc.calories + e.calories }; }, { protein: 0, netC: 0, calories: 0 });
+  return (
+    <div className="card">
+      <button onClick={onToggleExpand} style={{ display: 'grid', gridTemplateColumns: '105px 1fr auto', alignItems: 'center', width: '100%', background: 'none', border: 'none', textAlign: 'left', marginBottom: expanded ? 12 : 0, gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>{meal.emoji}</span>
+          <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 14, fontWeight: 600, color: TEXT }}>{meal.label}</span>
+        </div>
+        {!expanded && (
+          <span style={{ fontSize: 11.5, color: MUTED, textAlign: 'center' }}>{foods.length === 0 ? 'nothing logged' : `${foods.length} item${foods.length > 1 ? 's' : ''} · ${Math.round(totals.protein)}g P · ${Math.round(totals.calories)} cal`}</span>
+        )}
+        {expanded && <span />}
+        <span style={{ color: MUTED, fontSize: 12 }}>{expanded ? '▲' : '▼'}</span>
+      </button>
+
+      {expanded && (
+        <>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+            <button onClick={onAdd} style={{ background: MANUAL_GRAY, border: 'none', borderRadius: 8, padding: '7px 12px', color: WHITE, fontSize: 12.5, fontWeight: 700 }}>Manual+</button>
+            <button onClick={onAiAdd} style={{ background: GRAY, border: 'none', borderRadius: 8, padding: '7px 12px', color: WHITE, fontSize: 12.5, fontWeight: 700 }}>Smart+</button>
+          </div>
+
+          {foods.length === 0 ? (
+            <div style={{ color: MUTED, fontSize: 13 }}>Nothing logged.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {foods.map(f => {
+                const e = effective(f);
+                const pct = f.percent ?? 100;
+                return (
+                  <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0' }}>
+                    <button onClick={() => onEdit(f)} style={{ background: 'none', border: 'none', textAlign: 'left', flex: 1 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 5 }}>
+                        {f.name}{f.estimated && <span style={{ color: '#B8721F' }}>*</span>}{pct !== 100 && <span style={{ fontSize: 11, color: MUTED, fontWeight: 400 }}>({pct}%)</span>}
+                        <span style={{ fontSize: 11, color: '#B8B5BD' }}>✎</span>
+                      </div>
+                      <div style={{ fontSize: 11.5, color: MUTED }}>{Math.round(e.protein)}g P · {Math.max(0, Math.round(e.carbs - e.fiber))}g net C · {Math.round(e.fat)}g F · {Math.round(e.calories)} cal</div>
+                    </button>
+                    <button onClick={() => onRemove(f.id)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 14 }}>✕</button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function SmartCoachModal({ loading, text, error, onClose, onRetry }) {
+  return (
+    <Modal title="🧠 Smart Coach — Weekly Recap" onClose={onClose}>
+      {loading && <div style={{ color: MUTED, fontSize: 13, textAlign: 'center', padding: '20px 0' }}>Reviewing your week…</div>}
+      {error && (
+        <div>
+          <div style={{ background: '#FBEAEA', border: '1px solid #F5C6C6', borderRadius: 10, padding: 12, fontSize: 13, color: RED, marginBottom: 12 }}>{error}</div>
+          <PrimaryButton onClick={onRetry} label="Try Again" />
+        </div>
+      )}
+      {text && !loading && (
+        <div style={{ fontSize: 14, color: TEXT, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{text}</div>
+      )}
+      {text && !loading && <PrimaryButton onClick={onClose} label="Got it" style={{ marginTop: 16 }} />}
+    </Modal>
+  );
+}
+
+function MacroPopup({ data, onClose }) {
+  const carbGood = !data.carbs.over;
+  const proteinGood = !data.protein.over;
+  return (
+    <Modal title="Meal Logged" onClose={onClose}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ padding: 12, borderRadius: 10, background: carbGood ? '#EAF3EA' : '#FBEAEA' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: carbGood ? '#2E7D32' : RED }}>Carbs: {Math.round(data.carbs.value)}g — {carbGood ? `nice, under 1/3 of your daily goal (${Math.round(data.carbs.third)}g)` : `over 1/3 of your daily goal (${Math.round(data.carbs.third)}g)`}</div>
+        </div>
+        <div style={{ padding: 12, borderRadius: 10, background: proteinGood ? '#EAF3EA' : '#FBEAEA' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: proteinGood ? '#2E7D32' : RED }}>Protein: {Math.round(data.protein.value)}g — {proteinGood ? `nice hit toward 1/3 of your daily goal (${Math.round(data.protein.third)}g)` : `under 1/3 of your daily goal (${Math.round(data.protein.third)}g)`}</div>
+        </div>
+        {data.hydrationAdded && (
+          <div style={{ padding: 12, borderRadius: 10, background: '#EAF1FB' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#1D4ED8' }}>💧 +{Math.round(data.hydrationAdded)}oz added to Hydration automatically</div>
+          </div>
+        )}
+      </div>
+      <PrimaryButton onClick={onClose} label="Got it" />
+    </Modal>
+  );
+}
+
+function FoodModal({ mealLabel, onClose, onSave }) {
+  const [f, setF] = useState({ name: '', protein: '', carbs: '', fiber: '', fat: '', calories: '' });
+  const num = (v) => parseFloat(v) || 0;
+  const submit = () => { if (!f.name) return; onSave({ name: f.name, protein: num(f.protein), carbs: num(f.carbs), fiber: num(f.fiber), fat: num(f.fat), calories: num(f.calories) }); };
+  return (
+    <Modal title={`Log ${mealLabel}`} onClose={onClose}>
+      <Field label="Food name"><input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="e.g. Grilled chicken thigh" autoFocus /></Field>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <Field label="Protein (g)"><input type="number" inputMode="decimal" value={f.protein} onChange={e => setF({ ...f, protein: e.target.value })} /></Field>
+        <Field label="Fat (g)"><input type="number" inputMode="decimal" value={f.fat} onChange={e => setF({ ...f, fat: e.target.value })} /></Field>
+        <Field label="Total carbs (g)"><input type="number" inputMode="decimal" value={f.carbs} onChange={e => setF({ ...f, carbs: e.target.value })} /></Field>
+        <Field label="Fiber (g)"><input type="number" inputMode="decimal" value={f.fiber} onChange={e => setF({ ...f, fiber: e.target.value })} /></Field>
+      </div>
+      <Field label="Calories"><input type="number" inputMode="decimal" value={f.calories} onChange={e => setF({ ...f, calories: e.target.value })} /></Field>
+      <PrimaryButton onClick={submit} />
+    </Modal>
+  );
+}
+
+// ---------- Smart Add: Search -> review/edit/delete -> Add ----------
+function AIAddModal({ mealLabel, onClose, onSave }) {
+  const [tab, setTab] = useState('text');
+  const [text, setText] = useState('');
+  const [photo, setPhoto] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [results, setResults] = useState(null); // array of {tempId, name, protein, carbs, fiber, fat, calories}
+  const [voiceError, setVoiceError] = useState(null);
+  const fileRef = useRef();
+
+  const handleFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setPhoto(reader.result);
+    reader.readAsDataURL(file);
+  };
+
+  const search = async () => {
+    setError(null);
+    if (tab === 'text' && !text.trim()) return;
+    if ((tab === 'photo' || tab === 'receipt') && !photo) return;
+    setLoading(true);
+    try {
+      const mode = tab === 'text' ? 'text' : tab; // 'text' | 'photo' | 'receipt'
+      const body = mode === 'text' ? { mode, text } : { mode, image: photo };
+      const res = await fetch('/api/estimate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.error === 'not_configured') setError("AI estimation isn't set up yet on this deployment — add a GEMINI_API_KEY to enable it, or log this manually for now.");
+        else setError(data.message || 'Something went wrong estimating this. Try again or log it manually.');
+        setLoading(false);
+        return;
+      }
+      if (!data.foods || !data.foods.length) {
+        setError("Couldn't identify any foods from that — try being more specific, or log it manually.");
+        setLoading(false);
+        return;
+      }
+      setResults(data.foods.map(f => ({ ...f, tempId: Math.random() })));
+    } catch (e) {
+      setError('Could not reach the AI estimator. Check your connection and try again.');
+    }
+    setLoading(false);
+  };
+
+  const updateResult = (tempId, updates) => setResults(results.map(r => r.tempId === tempId ? { ...r, ...updates } : r));
+  const removeResult = (tempId) => setResults(results.filter(r => r.tempId !== tempId));
+
+  const confirmAdd = () => {
+    if (!results || !results.length) return;
+    onSave(results.map(({ tempId, ...rest }) => rest));
+  };
+
+  const num = (v) => parseFloat(v) || 0;
+
+  return (
+    <Modal title={`Smart Add — ${mealLabel}`} onClose={onClose}>
+      {!results ? (
+        <>
+          <div style={{ display: 'flex', gap: 5, marginBottom: 16 }}>
+            {[['text', 'Describe It'], ['photo', 'Photo'], ['receipt', 'Receipt']].map(([key, label]) => (
+              <button key={key} onClick={() => setTab(key)} style={{ flex: 1, padding: 9, borderRadius: 8, border: `1.5px solid ${tab === key ? BURGUNDY : BORDER}`, background: tab === key ? 'var(--track-bg)' : 'var(--input-bg)', color: tab === key ? LABEL : MUTED, fontWeight: 600, fontSize: 12 }}>{label}</button>
+            ))}
+          </div>
+
+          {tab === 'text' ? (
+            <Field label="What did you eat?">
+              <div style={{ position: 'relative' }}>
+                <textarea value={text} onChange={e => setText(e.target.value)} placeholder={'e.g. "Core Power 42g protein shake and a Sonic small chicken nugget"'}
+                  rows={3} style={{ fontFamily: 'inherit', background: 'var(--input-bg)', border: `1px solid ${BORDER}`, color: TEXT, borderRadius: 8, padding: '10px 40px 10px 11px', fontSize: 14, width: '100%', resize: 'vertical' }} autoFocus />
+                <button onClick={() => {
+                  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+                  if (!SR) { setVoiceError("Voice input isn't supported in Safari — type instead."); return; }
+                  setVoiceError(null);
+                  const rec = new SR();
+                  rec.lang = 'en-US';
+                  rec.onresult = (e) => setText((prev) => (prev ? prev + ' ' : '') + e.results[0][0].transcript);
+                  rec.onerror = () => setVoiceError("Couldn't hear that — try typing instead.");
+                  rec.start();
+                }} style={{ position: 'absolute', right: 8, top: 8, background: 'none', border: 'none', fontSize: 18 }}>🎙️</button>
+              </div>
+              {voiceError && <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4 }}>{voiceError}</div>}
+            </Field>
+          ) : (
+            <div onClick={() => fileRef.current.click()} style={{ border: `1.5px dashed ${BORDER}`, borderRadius: 10, padding: photo ? 0 : 24, textAlign: 'center', marginBottom: 14, overflow: 'hidden', cursor: 'pointer' }}>
+              {photo ? <img src={photo} alt="upload" style={{ width: '100%', display: 'block' }} /> : <div style={{ color: MUTED, fontSize: 13 }}>{tab === 'receipt' ? '🧾' : '📷'}<div>Tap to {tab === 'receipt' ? 'photograph your receipt' : 'add a photo'}</div></div>}
+            </div>
+          )}
+          <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{ display: 'none' }} />
+
+          {tab === 'receipt' && <div style={{ fontSize: 11.5, color: MUTED, marginTop: -8, marginBottom: 10 }}>Works best for a single fast-food receipt, not a full grocery haul.</div>}
+
+          {error && <div style={{ background: '#FBEAEA', border: '1px solid #F5C6C6', borderRadius: 10, padding: 10, fontSize: 12.5, color: RED, marginTop: 10 }}>{error}</div>}
+
+          <PrimaryButton onClick={search} disabled={loading} label={loading ? 'Searching…' : 'Search'} />
+        </>
+      ) : (
+        <>
+          <div style={{ fontSize: 12, color: MUTED, marginBottom: 12 }}>Review and edit before adding — nothing's logged yet.</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 14 }}>
+            {results.map(r => (
+              <div key={r.tempId} style={{ border: `1px solid ${BORDER}`, borderRadius: 10, padding: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <input value={r.name} onChange={e => updateResult(r.tempId, { name: e.target.value })} style={{ fontWeight: 600, fontSize: 13.5, border: 'none', background: 'none', padding: '2px 0', flex: 1 }} />
+                  <button onClick={() => removeResult(r.tempId)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 15 }}>✕</button>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+                  <div><label style={{ fontSize: 10, color: MUTED }}>Protein</label><input type="number" value={r.protein} onChange={e => updateResult(r.tempId, { protein: num(e.target.value) })} style={{ fontSize: 12, padding: '5px 6px' }} /></div>
+                  <div><label style={{ fontSize: 10, color: MUTED }}>Carbs</label><input type="number" value={r.carbs} onChange={e => updateResult(r.tempId, { carbs: num(e.target.value) })} style={{ fontSize: 12, padding: '5px 6px' }} /></div>
+                  <div><label style={{ fontSize: 10, color: MUTED }}>Fiber</label><input type="number" value={r.fiber} onChange={e => updateResult(r.tempId, { fiber: num(e.target.value) })} style={{ fontSize: 12, padding: '5px 6px' }} /></div>
+                  <div><label style={{ fontSize: 10, color: MUTED }}>Fat</label><input type="number" value={r.fat} onChange={e => updateResult(r.tempId, { fat: num(e.target.value) })} style={{ fontSize: 12, padding: '5px 6px' }} /></div>
+                  <div style={{ gridColumn: 'span 2' }}><label style={{ fontSize: 10, color: MUTED }}>Calories</label><input type="number" value={r.calories} onChange={e => updateResult(r.tempId, { calories: num(e.target.value) })} style={{ fontSize: 12, padding: '5px 6px' }} /></div>
+                </div>
+              </div>
+            ))}
+            {results.length === 0 && <div style={{ color: MUTED, fontSize: 13 }}>All items removed — go back and search again.</div>}
+          </div>
+          <button onClick={() => setResults(null)} style={{ background: 'none', border: 'none', color: LABEL, fontSize: 12.5, fontWeight: 600, marginBottom: 4 }}>← Search again</button>
+          <PrimaryButton onClick={confirmAdd} disabled={results.length === 0} label={`Add to ${mealLabel}`} />
+        </>
+      )}
+    </Modal>
+  );
+}
+
+function EditFoodModal({ food, onClose, onSave, onDelete }) {
+  const [f, setF] = useState({ ...food });
+  const num = (v) => parseFloat(v) || 0;
+  const e = effective(f);
+  const submit = () => onSave({ name: f.name, protein: num(f.protein), carbs: num(f.carbs), fiber: num(f.fiber), fat: num(f.fat), calories: num(f.calories), percent: num(f.percent) || 100, estimated: f.confirmEstimate ? false : f.estimated });
+  return (
+    <Modal title="Edit Food" onClose={onClose}>
+      <Field label="Food name"><input value={f.name} onChange={ev => setF({ ...f, name: ev.target.value })} /></Field>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <Field label="Protein (g)"><input type="number" value={f.protein} onChange={ev => setF({ ...f, protein: ev.target.value })} /></Field>
+        <Field label="Fat (g)"><input type="number" value={f.fat} onChange={ev => setF({ ...f, fat: ev.target.value })} /></Field>
+        <Field label="Total carbs (g)"><input type="number" value={f.carbs} onChange={ev => setF({ ...f, carbs: ev.target.value })} /></Field>
+        <Field label="Fiber (g)"><input type="number" value={f.fiber} onChange={ev => setF({ ...f, fiber: ev.target.value })} /></Field>
+      </div>
+      <Field label="Calories"><input type="number" value={f.calories} onChange={ev => setF({ ...f, calories: ev.target.value })} /></Field>
+      <Field label="% eaten (e.g. 75 if you didn't finish it)"><input type="number" value={f.percent ?? 100} onChange={ev => setF({ ...f, percent: ev.target.value })} /></Field>
+      <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>Logged amount: {Math.round(e.protein)}g P · {Math.max(0, Math.round(e.carbs - e.fiber))}g net C · {Math.round(e.calories)} cal</div>
+      {f.estimated && <Checkbox checked={!!f.confirmEstimate} onClick={() => setF({ ...f, confirmEstimate: !f.confirmEstimate })} label="These numbers are confirmed accurate (clear the *)" />}
+      <PrimaryButton onClick={submit} />
+      <button onClick={onDelete} style={{ width: '100%', background: 'none', border: 'none', color: RED, fontSize: 13, fontWeight: 600, marginTop: 10, padding: 8 }}>Delete Entry</button>
+    </Modal>
+  );
+}
+
+const TRAINING_TYPES = [
+  { key: 'Strength', emoji: '🏋️' },
+  { key: 'Cardio', emoji: '❤️' },
+  { key: 'Walk', emoji: '🚶' },
+  { key: 'Cycling', emoji: '🚴' },
+  { key: 'Mobility', emoji: '🧘' },
+  { key: 'Mixed', emoji: '🔀' },
+];
+
+// Frequent Foods unit categories — each food gets one of these (AI-assigned), which determines
+// which units its picker offers. toBase = how many of the category's base unit one of this unit equals.
+const CATEGORY_UNITS = {
+  liquid: { baseUnit: 'tbsp', options: [{ unit: 'tbsp', toBase: 1 }, { unit: 'fl oz', toBase: 2 }, { unit: 'cup', toBase: 16 }] },
+  sliced: { baseUnit: 'slice', options: [{ unit: 'slice', toBase: 1 }] },
+  piece: { baseUnit: 'pc', options: [{ unit: 'pc', toBase: 1 }] },
+  weight: { baseUnit: 'oz', options: [{ unit: 'oz', toBase: 1 }, { unit: 'g', toBase: 1 / 28.35 }] },
+};
+const CATEGORY_LABELS = { liquid: 'Liquid / Sauce', sliced: 'Sliced', piece: 'Piece / Countable', weight: 'Weight-based' };
+
+const SEED_EXERCISES = [
+  'Push-ups', 'Sit-ups', 'Crunches', 'Squats', 'Lunges', 'Planks', 'Pull-ups', 'Chin-ups', 'Dips', 'Burpees',
+  'Bench Press', 'Incline Bench Press', 'Overhead Press', 'Dumbbell Bench Press', 'Dumbbell Shoulder Press', 'Tricep Extensions', 'Tricep Pushdowns',
+  'Deadlift', 'Barbell Row', 'Dumbbell Row', 'Lat Pulldown', 'Dumbbell Curls', 'Barbell Curls', 'Hammer Curls', 'Face Pulls',
+  'Back Squat', 'Front Squat', 'Leg Press', 'Romanian Deadlift', 'Leg Curls', 'Leg Extensions', 'Calf Raises', 'Hip Thrusts',
+  'Russian Twists', 'Leg Raises', 'Mountain Climbers', 'Kettlebell Swings', "Farmer's Carry",
+];
+
+function TrainingTypeModal({ onClose, onPick }) {
+  return (
+    <Modal title="What kind of training?" onClose={onClose}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        {TRAINING_TYPES.map(t => (
+          <button key={t.key} onClick={() => onPick(t.key)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 14, border: `1px solid ${BORDER}`, borderRadius: 10, background: WHITE, fontSize: 14, fontWeight: 600, color: TEXT }}>
+            <span>{t.emoji}</span> {t.key}
+          </button>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
+function ExercisePickerModal({ exercises, onClose, onPick, onTogglePin, onDelete, onViewHistory }) {
+  const [customName, setCustomName] = useState('');
+  const sorted = [...exercises].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || (b.count || 0) - (a.count || 0));
+  const addCustom = () => { const name = customName.trim(); if (!name) return; onPick(name); setCustomName(''); };
+  return (
+    <Modal title="🏋️ Pick an Exercise" onClose={onClose}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+        <input value={customName} onChange={e => setCustomName(e.target.value)} placeholder="Add a new exercise…" onKeyDown={e => e.key === 'Enter' && addCustom()} />
+        <button onClick={addCustom} style={{ background: BURGUNDY, border: 'none', borderRadius: 9, padding: '10px 16px', color: WHITE, fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap' }}>Add</button>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: '50vh', overflowY: 'auto' }}>
+        {sorted.map(e => (
+          <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 0', borderBottom: `1px solid ${BORDER}` }}>
+            <button onClick={() => onPick(e.name)} style={{ background: 'none', border: 'none', textAlign: 'left', flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 5 }}>
+                {e.pinned && <span style={{ fontSize: 11 }}>📌</span>}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span>
+              </div>
+              {e.count > 0 && <div style={{ fontSize: 11, color: MUTED }}>Logged {e.count}×</div>}
+            </button>
+            <button onClick={() => onViewHistory(e.name)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 11 }}>History</button>
+            <button onClick={() => onTogglePin(e.id)} style={{ background: 'none', border: 'none', color: e.pinned ? LABEL : '#C9C6D1', fontSize: 15 }}>📌</button>
+            <button onClick={() => onDelete(e.id)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 15 }}>✕</button>
+          </div>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
+function SetEntryModal({ exerciseName, profileWeight, initialSets, history, profileContext, onClose, onSave }) {
+  const [sets, setSets] = useState(initialSets ? initialSets.map(s => ({ ...s })) : []);
+  const [weight, setWeight] = useState('');
+  const [reps, setReps] = useState('');
+  const [duration, setDuration] = useState('');
+  const [activeCalories, setActiveCalories] = useState('');
+  const [avgHeartRate, setAvgHeartRate] = useState('');
+  const [notes, setNotes] = useState('');
+  const [suggestion, setSuggestion] = useState(null);
+  const [suggestionLoading, setSuggestionLoading] = useState(true);
+  const num = (v) => parseFloat(v) || 0;
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/suggest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ exerciseName, history: history || [], profile: profileContext || {} }) });
+        const data = await res.json();
+        if (data.suggestion) setSuggestion(data.suggestion);
+      } catch (e) { /* offline or failed — just skip the suggestion, don't block logging */ }
+      setSuggestionLoading(false);
+    })();
+  }, []);
+
+  const addSet = () => {
+    if (!weight || !reps) return;
+    setSets([...sets, { weight: num(weight), reps: num(reps) }]);
+  };
+  const removeSet = (i) => setSets(sets.filter((_, idx) => idx !== i));
+
+  const submit = () => {
+    if (sets.length === 0 || !duration) return;
+    let calories = num(activeCalories) || null;
+    if (!calories && profileWeight) {
+      const kg = profileWeight * 0.4536;
+      calories = Math.round(6 * kg * (num(duration) / 60)); // MET 6 (vigorous lifting), same formula as before
+    }
+    onSave({ type: 'Strength', exerciseName, sets, duration: num(duration), activeCalories: calories, avgHeartRate: num(avgHeartRate) || null, notes });
+  };
+
+  return (
+    <Modal title={exerciseName} onClose={onClose}>
+      {suggestionLoading && <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 14, fontStyle: 'italic' }}>Thinking of a suggestion…</div>}
+      {suggestion && !suggestionLoading && (
+        <div style={{ background: '#EAF1FB', border: '1px solid #C7D9F5', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#1D4ED8' }}>💡 {suggestion}</div>
+      )}
+      <div style={{ fontSize: 12, fontWeight: 600, color: LABEL, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>Sets</div>
+      {initialSets && initialSets.length > 0 && sets.length === initialSets.length && <div style={{ fontSize: 11.5, color: MUTED, marginBottom: 8, marginTop: -4 }}>Pre-filled from last time — edit or clear as needed</div>}
+      {sets.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
+          {sets.map((s, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--input-bg)', borderRadius: 8, padding: '8px 12px' }}>
+              <span style={{ fontSize: 13.5, fontWeight: 600 }}>Set {i + 1}: {s.weight}lbs × {s.reps} reps</span>
+              <button onClick={() => removeSet(i)} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 14 }}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+        <input type="number" inputMode="decimal" value={weight} onChange={e => setWeight(e.target.value)} placeholder="lbs" style={{ flex: 1 }} />
+        <input type="number" value={reps} onChange={e => setReps(e.target.value)} placeholder="reps" style={{ flex: 1 }} />
+        <button onClick={addSet} style={{ background: GRAY, border: 'none', borderRadius: 9, padding: '10px 16px', color: WHITE, fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap' }}>+ Set</button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <Field label="Duration (min)"><input type="number" value={duration} onChange={e => setDuration(e.target.value)} /></Field>
+        <Field label="Active calories burned"><input type="number" value={activeCalories} onChange={e => setActiveCalories(e.target.value)} placeholder="blank = auto-estimate" /></Field>
+        <Field label="Avg heart rate (bpm)"><input type="number" value={avgHeartRate} onChange={e => setAvgHeartRate(e.target.value)} placeholder="from Apple Watch" /></Field>
+      </div>
+      <Field label="Notes (optional)"><input value={notes} onChange={e => setNotes(e.target.value)} placeholder="e.g. felt strong" /></Field>
+      <PrimaryButton onClick={submit} label={`Save ${exerciseName}`} />
+    </Modal>
+  );
+}
+
+function TrainingMethodModal({ type, onClose, onPick }) {
+  return (
+    <Modal title={`Log ${type} — how?`} onClose={onClose}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <button onClick={() => onPick('manual')} style={{ background: MANUAL_GRAY, border: 'none', borderRadius: 10, padding: 16, color: WHITE, fontSize: 14, fontWeight: 700 }}>Manual Entry</button>
+        <button onClick={() => onPick('smart')} style={{ background: GRAY, border: 'none', borderRadius: 10, padding: 16, color: WHITE, fontSize: 14, fontWeight: 700 }}>✨ Smart Entry (Photo)</button>
+      </div>
+    </Modal>
+  );
+}
+
+function WorkoutAiModal({ initialType, onClose, onSave }) {
+  const [photo, setPhoto] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [result, setResult] = useState(null);
+  const fileRef = useRef();
+  const num = (v) => parseFloat(v) || null;
+
+  const handleFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setPhoto(reader.result);
+    reader.readAsDataURL(file);
+  };
+
+  const search = async () => {
+    if (!photo) return;
+    setError(null); setLoading(true);
+    try {
+      const res = await fetch('/api/estimate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'workout_photo', image: photo }) });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.error === 'not_configured') setError("AI estimation isn't set up yet on this deployment.");
+        else setError(data.message || 'Could not read that screen. Try again or log manually.');
+        setLoading(false); return;
+      }
+      setResult({ type: initialType || data.type || 'Cardio', duration: data.duration ? (typeof data.duration === 'string' ? data.duration : fmtDuration(data.duration)) : '', distance: data.distance || '', activeCalories: data.activeCalories || '', avgHeartRate: data.avgHeartRate || '', avgSpeed: data.avgSpeed || '', cadence: data.cadence || '' });
+    } catch (e) {
+      setError('Could not reach the AI estimator. Check your connection and try again.');
+    }
+    setLoading(false);
+  };
+
+  const confirmAdd = () => {
+    onSave({ type: result.type, duration: parseDuration(result.duration), distance: num(result.distance), activeCalories: num(result.activeCalories), avgHeartRate: num(result.avgHeartRate), avgSpeed: num(result.avgSpeed), cadence: num(result.cadence), notes: '' });
+  };
+
+  return (
+    <Modal title="Smart Add — Training" onClose={onClose}>
+      {!result ? (
+        <>
+          <div onClick={() => fileRef.current.click()} style={{ border: `1.5px dashed ${BORDER}`, borderRadius: 10, padding: photo ? 0 : 24, textAlign: 'center', marginBottom: 14, overflow: 'hidden', cursor: 'pointer' }}>
+            {photo ? <img src={photo} alt="watch screen" style={{ width: '100%', display: 'block' }} /> : <div style={{ color: MUTED, fontSize: 13 }}>⌚<div>Tap to photograph your Apple Watch workout summary</div></div>}
+          </div>
+          <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{ display: 'none' }} />
+          {error && <div style={{ background: '#FBEAEA', border: '1px solid #F5C6C6', borderRadius: 10, padding: 10, fontSize: 12.5, color: RED, marginTop: 10 }}>{error}</div>}
+          <PrimaryButton onClick={search} disabled={loading || !photo} label={loading ? 'Reading…' : 'Search'} />
+        </>
+      ) : (
+        <>
+          <div style={{ fontSize: 12, color: MUTED, marginBottom: 12 }}>Review and edit before adding — nothing's logged yet.</div>
+          <Field label="Type">
+            <select value={result.type} onChange={e => setResult({ ...result, type: e.target.value })}><option>Strength</option><option>Cardio</option><option>Walk</option><option>Cycling</option><option>Mobility</option><option>Mixed</option></select>
+          </Field>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <Field label="Duration (MM:SS)"><input type="text" inputMode="text" autoCapitalize="off" autoCorrect="off" placeholder="32:45" value={result.duration} onChange={e => setResult({ ...result, duration: e.target.value.replace(/[^0-9:.;]/g, '') })} /></Field>
+            {(result.type === 'Walk' || result.type === 'Cardio' || result.type === 'Cycling' || result.type === 'Mixed') && <Field label="Distance (mi)"><input type="number" inputMode="decimal" value={result.distance} onChange={e => setResult({ ...result, distance: e.target.value })} /></Field>}
+            <Field label="Active calories"><input type="number" value={result.activeCalories} onChange={e => setResult({ ...result, activeCalories: e.target.value })} /></Field>
+            <Field label="Avg heart rate"><input type="number" value={result.avgHeartRate} onChange={e => setResult({ ...result, avgHeartRate: e.target.value })} /></Field>
+            {(result.type === 'Cycling' || result.type === 'Mixed') && <>
+              <Field label="Avg speed (mph)"><input type="number" inputMode="decimal" value={result.avgSpeed} onChange={e => setResult({ ...result, avgSpeed: e.target.value })} /></Field>
+              <Field label="Cadence (rpm)"><input type="number" value={result.cadence} onChange={e => setResult({ ...result, cadence: e.target.value })} /></Field>
+            </>}
+          </div>
+          <button onClick={() => setResult(null)} style={{ background: 'none', border: 'none', color: LABEL, fontSize: 12.5, fontWeight: 600, margin: '10px 0 4px' }}>← Try another photo</button>
+          <PrimaryButton onClick={confirmAdd} label="Add to Training" />
+        </>
+      )}
+    </Modal>
+  );
+}
+
+function WorkoutModal({ initialType, profileWeight, history, profileContext, onClose, onSave }) {
+  const [w, setW] = useState({ type: initialType || 'Strength', duration: '', distance: '', weightLifted: '', reps: '', avgSpeed: '', cadence: '', activeCalories: '', avgHeartRate: '', notes: '' });
+  const [suggestion, setSuggestion] = useState(null);
+  const [suggestionLoading, setSuggestionLoading] = useState(true);
+  const num = (v) => parseFloat(v) || 0;
+  const isCardioLike = w.type === 'Walk' || w.type === 'Cardio';
+  const isStrength = w.type === 'Strength';
+  const isCycling = w.type === 'Cycling';
+  const isMixed = w.type === 'Mixed';
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/suggest', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trainingType: initialType, history: history || [], profile: profileContext || {} }) });
+        const data = await res.json();
+        if (data.suggestion) setSuggestion(data.suggestion);
+      } catch (e) { /* offline or failed — just skip the suggestion, don't block logging */ }
+      setSuggestionLoading(false);
+    })();
+  }, []);
+
+  const submit = () => {
+    const durationMin = parseDuration(w.duration);
+    if (!durationMin) return;
+    let activeCalories = num(w.activeCalories) || null;
+    if (!activeCalories && isStrength && profileWeight) {
+      const kg = profileWeight * 0.4536;
+      activeCalories = Math.round(6 * kg * (durationMin / 60)); // MET 6 (vigorous lifting)
+    }
+    onSave({
+      type: w.type, duration: durationMin, notes: w.notes,
+      distance: (isCardioLike || isCycling || isMixed) ? (num(w.distance) || null) : null,
+      weightLifted: (isStrength || isMixed) ? (num(w.weightLifted) || null) : null,
+      reps: (isStrength || isMixed) ? (num(w.reps) || null) : null,
+      avgSpeed: (isCycling || isMixed) ? (num(w.avgSpeed) || null) : null,
+      cadence: (isCycling || isMixed) ? (num(w.cadence) || null) : null,
+      activeCalories, avgHeartRate: num(w.avgHeartRate) || null,
+    });
+  };
+
+  return (
+    <Modal title="Log Training" onClose={onClose}>
+      {suggestionLoading && <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 14, fontStyle: 'italic' }}>Thinking of a suggestion…</div>}
+      {suggestion && !suggestionLoading && (
+        <div style={{ background: '#EAF1FB', border: '1px solid #C7D9F5', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#1D4ED8' }}>💡 {suggestion}</div>
+      )}
+      <Field label="Type"><select value={w.type} onChange={e => setW({ ...w, type: e.target.value })}><option>Strength</option><option>Cardio</option><option>Walk</option><option>Cycling</option><option>Mobility</option><option>Mixed</option></select></Field>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        {isStrength
+          ? <Field label="Duration (min)"><input type="number" value={w.duration} onChange={e => setW({ ...w, duration: e.target.value })} /></Field>
+          : <Field label="Duration (MM:SS)"><input type="text" inputMode="text" autoCapitalize="off" autoCorrect="off" placeholder="32:45" value={w.duration} onChange={e => setW({ ...w, duration: e.target.value.replace(/[^0-9:.;]/g, '') })} /></Field>}
+        {(isCardioLike || isCycling || isMixed) && <Field label="Distance (mi)"><input type="number" inputMode="decimal" value={w.distance} onChange={e => setW({ ...w, distance: e.target.value })} placeholder="optional" /></Field>}
+        {(isCycling || isMixed) && (
+          <>
+            <Field label="Avg speed (mph)"><input type="number" inputMode="decimal" value={w.avgSpeed} onChange={e => setW({ ...w, avgSpeed: e.target.value })} /></Field>
+            <Field label="Cadence (rpm)"><input type="number" value={w.cadence} onChange={e => setW({ ...w, cadence: e.target.value })} /></Field>
+          </>
+        )}
+        {(isStrength || isMixed) && (
+          <>
+            <Field label="Weight lifted (lbs)"><input type="number" inputMode="decimal" value={w.weightLifted} onChange={e => setW({ ...w, weightLifted: e.target.value })} placeholder="e.g. curls" /></Field>
+            <Field label="Reps"><input type="number" value={w.reps} onChange={e => setW({ ...w, reps: e.target.value })} /></Field>
+          </>
+        )}
+        <Field label="Active calories burned"><input type="number" value={w.activeCalories} onChange={e => setW({ ...w, activeCalories: e.target.value })} placeholder={isStrength ? 'blank = auto-estimate' : 'from Apple Watch'} /></Field>
+        <Field label="Avg heart rate (bpm)"><input type="number" value={w.avgHeartRate} onChange={e => setW({ ...w, avgHeartRate: e.target.value })} placeholder="from Apple Watch" /></Field>
+      </div>
+      <Field label="Notes (optional)"><input value={w.notes} onChange={e => setW({ ...w, notes: e.target.value })} placeholder="e.g. legs, heavy" /></Field>
+      <PrimaryButton onClick={submit} />
+    </Modal>
+  );
+}
+
+function WeightModal({ onClose, onSave }) {
+  const [weight, setWeight] = useState(''); const [note, setNote] = useState('');
+  const submit = () => { if (!weight) return; onSave({ date: todayISO(), weight: parseFloat(weight), note }); };
+  return (
+    <Modal title="Log Weigh-In" onClose={onClose}>
+      <Field label="Weight (lbs)"><input type="number" inputMode="decimal" value={weight} onChange={e => setWeight(e.target.value)} autoFocus /></Field>
+      <Field label="Note (optional)"><input value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. energy good, sleep rough" /></Field>
+      <PrimaryButton onClick={submit} />
+    </Modal>
+  );
+}
+
+function BpModal({ onClose, onSave }) {
+  const [systolic, setSystolic] = useState(''); const [diastolic, setDiastolic] = useState(''); const [pulse, setPulse] = useState('');
+  const submit = () => { if (!systolic || !diastolic) return; onSave({ date: todayISO(), systolic: parseInt(systolic), diastolic: parseInt(diastolic), pulse: pulse ? parseInt(pulse) : null }); };
+  return (
+    <Modal title="Log Blood Pressure" onClose={onClose}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <Field label="Systolic"><input type="number" value={systolic} onChange={e => setSystolic(e.target.value)} autoFocus /></Field>
+        <Field label="Diastolic"><input type="number" value={diastolic} onChange={e => setDiastolic(e.target.value)} /></Field>
+      </div>
+      <Field label="Pulse (optional)"><input type="number" value={pulse} onChange={e => setPulse(e.target.value)} placeholder="bpm" /></Field>
+      <PrimaryButton onClick={submit} />
+    </Modal>
+  );
+}
+
+function MeasureModal({ onClose, onSave }) {
+  const [m, setM] = useState({ waist: '', chest: '', hips: '', arms: '', thighs: '' });
+  const num = (v) => parseFloat(v) || null;
+  const submit = () => onSave({ date: todayISO(), waist: num(m.waist), chest: num(m.chest), hips: num(m.hips), arms: num(m.arms), thighs: num(m.thighs) });
+  return (
+    <Modal title="Log Measurements" onClose={onClose}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <Field label="Waist (in)"><input type="number" inputMode="decimal" value={m.waist} onChange={e => setM({ ...m, waist: e.target.value })} autoFocus /></Field>
+        <Field label="Chest (in)"><input type="number" inputMode="decimal" value={m.chest} onChange={e => setM({ ...m, chest: e.target.value })} /></Field>
+        <Field label="Hips (in)"><input type="number" inputMode="decimal" value={m.hips} onChange={e => setM({ ...m, hips: e.target.value })} /></Field>
+        <Field label="Arms (in)"><input type="number" inputMode="decimal" value={m.arms} onChange={e => setM({ ...m, arms: e.target.value })} /></Field>
+        <Field label="Thighs (in)"><input type="number" inputMode="decimal" value={m.thighs} onChange={e => setM({ ...m, thighs: e.target.value })} /></Field>
+      </div>
+      <PrimaryButton onClick={submit} />
+    </Modal>
+  );
+}
+
+function SleepModal({ initial, forDate, onClose, onSave }) {
+  const [asleep, setAsleep] = useState(initial?.asleep || '22:30'); const [wake, setWake] = useState(initial?.wake || '05:45');
+  const [quality, setQuality] = useState(initial?.quality || 3); const [bathroom, setBathroom] = useState(initial?.bathroom ?? '');
+
+  const computeHours = () => {
+    if (!asleep || !wake) return null;
+    const [ah, am] = asleep.split(':').map(Number);
+    const [wh, wm] = wake.split(':').map(Number);
+    let mins = (wh * 60 + wm) - (ah * 60 + am);
+    if (mins <= 0) mins += 24 * 60; // wake is next day
+    return Math.round((mins / 60) * 10) / 10;
+  };
+
+  const submit = () => {
+    const hours = computeHours();
+    if (hours === null) return;
+    onSave({ date: initial?.date || forDate || todayISO(), id: initial?.id || (Date.now() + Math.random()), asleep, wake, hours, quality, bathroom: parseInt(bathroom) || 0 });
+  };
+
+  return (
+    <Modal title={initial ? 'Edit Sleep' : 'Log Sleep'} onClose={onClose}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <Field label="Fell asleep"><input type="time" value={asleep} onChange={e => setAsleep(e.target.value)} /></Field>
+        <Field label="Woke up"><input type="time" value={wake} onChange={e => setWake(e.target.value)} /></Field>
+      </div>
+      <Field label="Times woken (bathroom)"><input type="number" value={bathroom} onChange={e => setBathroom(e.target.value)} placeholder="0" /></Field>
+      <Field label={`Quality: ${quality}/5`}>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {[1, 2, 3, 4, 5].map(n => (
+            <button key={n} onClick={() => setQuality(n)} style={{ flex: 1, padding: 10, borderRadius: 8, border: `1.5px solid ${quality === n ? BURGUNDY : BORDER}`, background: quality === n ? BURGUNDY : WHITE, color: quality === n ? WHITE : TEXT, fontWeight: 700 }}>{n}</button>
+          ))}
+        </div>
+      </Field>
+      {asleep && wake && <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>Total: {computeHours()} hrs</div>}
+      <PrimaryButton onClick={submit} />
+    </Modal>
+  );
+}
+
+function SettingsModal({ profile, onClose, onSave, onExport, onShowHome, onShowHistory, onShowCoach, onReconnect, nightModeSetting, onSetNightMode, vacation, vacationActive, onSetVacation }) {
+  const [vacEnd, setVacEnd] = useState((vacation && vacation.endDate) || '');
+  const [t, setT] = useState(profile.targets);
+  const [goalWeight, setGoalWeight] = useState(profile.goalWeight);
+  const [showLevelPicker, setShowLevelPicker] = useState(false);
+  const [targetsExpanded, setTargetsExpanded] = useState(false);
+  const num = (v) => parseFloat(v) || 0;
+
+  const lastSyncRaw = (() => { try { return localStorage.getItem('kt-last-sync'); } catch (e) { return null; } })();
+  const lastSyncText = lastSyncRaw ? new Date(parseInt(lastSyncRaw)).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Not yet synced';
+
+  if (showLevelPicker) {
+    return (
+      <Modal title="Change Goal Level" onClose={() => setShowLevelPicker(false)}>
+        <p style={{ fontSize: 12.5, color: MUTED, marginBottom: 16, lineHeight: 1.5 }}>Pick a level to refill your targets below — still editable before you save.</p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
+          {LEVELS.map(level => (
+            <button key={level.num} onClick={() => { setT({ calories: level.calories, protein: level.protein, netCarbs: level.carbs, fat: level.fat, water: level.water }); setShowLevelPicker(false); }} style={{ background: 'var(--card-bg)', border: `1px solid ${BORDER}`, borderRadius: 12, padding: '14px 8px', textAlign: 'center' }}>
+              <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, fontWeight: 700, color: LABEL, marginBottom: 4 }}>Level {level.num}</div>
+              <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700 }}>{level.carbs}<span style={{ fontSize: 10, color: MUTED, fontWeight: 500, display: 'block' }}>g carbs</span></div>
+            </button>
+          ))}
+        </div>
+        <button onClick={() => setShowLevelPicker(false)} style={{ width: '100%', background: 'none', border: 'none', color: MUTED, fontSize: 12.5, marginTop: 10, padding: 8 }}>← Back</button>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal title="Settings" onClose={onClose}>
+      <div style={{ background: 'var(--input-bg)', borderRadius: 10, padding: '12px 14px', marginBottom: 18 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: LABEL, marginBottom: 4 }}>Created by Carl Cooper and his AI assistant</div>
+        <div style={{ fontSize: 11.5, color: MUTED, marginBottom: 6 }}>Suggestions, questions, or comments welcome:</div>
+        <div style={{ fontSize: 11.5, color: TEXT }}>817-454-7267</div>
+        <div style={{ fontSize: 11.5, color: TEXT }}>carlcooper@lynchlegacyexp.com</div>
+      </div>
+
+      <div style={{ fontSize: 12, fontWeight: 600, color: LABEL, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>Vacation Mode</div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+        {[['off', false], ['on', true]].map(([opt, isOn]) => (
+          <button key={opt} onClick={() => onSetVacation(isOn, isOn ? vacEnd : null)} style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: `1.5px solid ${vacationActive === isOn ? BURGUNDY : BORDER}`, background: vacationActive === isOn ? BURGUNDY : 'transparent', color: vacationActive === isOn ? WHITE : TEXT, fontWeight: 600, fontSize: 12.5, textTransform: 'capitalize' }}>{opt}</button>
+        ))}
+      </div>
+      {vacationActive && (
+        <Field label="Ends on (optional)"><input type="date" value={vacEnd} min={todayISO()} onChange={e => { setVacEnd(e.target.value); onSetVacation(true, e.target.value); }} /></Field>
+      )}
+      <div style={{ fontSize: 11.5, color: MUTED, lineHeight: 1.5, marginBottom: 18 }}>Pauses your streaks, turns off the red and gold card colors, and skips the Sunday Smart Coach recap. Weekly comparison, averages and weight projections keep running as normal.</div>
+
+      <div style={{ fontSize: 12, fontWeight: 600, color: LABEL, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>Night Mode</div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+        {['auto', 'light', 'dark'].map(opt => (
+          <button key={opt} onClick={() => onSetNightMode(opt)} style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: `1.5px solid ${nightModeSetting === opt ? BURGUNDY : BORDER}`, background: nightModeSetting === opt ? BURGUNDY : 'transparent', color: nightModeSetting === opt ? WHITE : TEXT, fontWeight: 600, fontSize: 12.5, textTransform: 'capitalize' }}>{opt}</button>
+        ))}
+      </div>
+      <div style={{ fontSize: 11.5, color: MUTED, marginBottom: 18 }}>Auto follows sunrise and sunset in Central time.</div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: LABEL, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Daily Targets</div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={() => setTargetsExpanded(!targetsExpanded)} style={{ background: MANUAL_GRAY, border: 'none', borderRadius: 8, padding: '7px 12px', color: WHITE, fontSize: 12.5, fontWeight: 700 }}>Manual</button>
+          <button onClick={() => setShowLevelPicker(true)} style={{ background: GRAY, border: 'none', borderRadius: 8, padding: '7px 12px', color: WHITE, fontSize: 12.5, fontWeight: 700 }}>Change Level</button>
+        </div>
+      </div>
+      {targetsExpanded && (
+        <>
+          <Field label="Protein Goal (g)"><input type="number" value={t.protein} onChange={e => setT({ ...t, protein: num(e.target.value) })} /></Field>
+          <Field label="Fat Goal (g)"><input type="number" value={t.fat} onChange={e => setT({ ...t, fat: num(e.target.value) })} /></Field>
+          <Field label="Net carb ceiling (g)"><input type="number" value={t.netCarbs} onChange={e => setT({ ...t, netCarbs: num(e.target.value) })} /></Field>
+          <Field label="Calorie ceiling"><input type="number" value={t.calories} onChange={e => setT({ ...t, calories: num(e.target.value) })} /></Field>
+          <Field label="Hydration Goal (oz)"><input type="number" value={t.water} onChange={e => setT({ ...t, water: num(e.target.value) })} /></Field>
+          <Field label="Goal weight (lbs)"><input type="number" value={goalWeight} onChange={e => setGoalWeight(num(e.target.value))} /></Field>
+          <PrimaryButton onClick={() => onSave({ ...profile, targets: t, goalWeight })} label="Save Targets" />
+        </>
+      )}
+
+      <div style={{ height: 1, background: BORDER, margin: '18px 0' }} />
+      <button className="ghostbtn" onClick={onShowCoach} style={{ width: '100%', justifyContent: 'center', padding: 12, marginBottom: 10 }}>🧠 View Smart Coach Recap</button>
+      <button className="ghostbtn" onClick={onReconnect} style={{ width: '100%', justifyContent: 'center', padding: 12, marginBottom: 10 }}>🔄 Reconnect to Existing Data</button>
+      <button className="ghostbtn" onClick={onShowHistory} style={{ width: '100%', justifyContent: 'center', padding: 12, marginBottom: 10 }}>📊 View History Graphs</button>
+      <button className="ghostbtn" onClick={onExport} style={{ width: '100%', justifyContent: 'center', padding: 12, marginBottom: 10 }}>⬇ Export Data (CSV)</button>
+      <button className="ghostbtn" onClick={onShowHome} style={{ width: '100%', justifyContent: 'center', padding: 12 }}>📱 Add to Home Screen</button>
+
+      <div style={{ marginTop: 16, padding: '10px 12px', background: 'var(--input-bg)', borderRadius: 10, fontSize: 11.5, color: MUTED, lineHeight: 1.5 }}>Your data syncs automatically to the cloud, protected by your PIN.</div>
+      <div style={{ marginTop: 10, fontSize: 10.5, color: MUTED, textAlign: 'center' }}>Build {BUILD_NUMBER} · Last synced: {lastSyncText}</div>
+    </Modal>
+  );
+}
+
+function WeightChart({ data, goal }) {
+  const chartData = data.map(d => ({ label: d.date.slice(5), value: d.weight }));
+  if (chartData.length < 2) return <div style={{ color: MUTED, fontSize: 12 }}>Log a few more weigh-ins to see your trend.</div>;
+  return <SimpleLineChart data={chartData} target={goal} />;
+}
+
+function SimpleLineChart({ data, target }) {
+  const vals = data.map(d => d.value).filter(v => v !== null && v !== undefined);
+  if (vals.length < 2) return <div style={{ color: MUTED, fontSize: 12 }}>Not enough data yet.</div>;
+  const min = Math.min(...vals, target ?? Infinity), max = Math.max(...vals, target ?? -Infinity);
+  const range = max - min || 1;
+  const w = 440, h = 180, pad = 20;
+  const step = (w - pad * 2) / (data.length - 1);
+  const pts = data.map((d, i) => {
+    const x = pad + i * step;
+    const y = d.value == null ? null : h - pad - ((d.value - min) / range) * (h - pad * 2);
+    return { x, y, label: d.label };
+  });
+  const line = pts.filter(p => p.y !== null).map(p => `${p.x},${p.y}`).join(' ');
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', height: 180 }}>
+      {target != null && <line x1={pad} y1={h - pad - ((target - min) / range) * (h - pad * 2)} x2={w - pad} y2={h - pad - ((target - min) / range) * (h - pad * 2)} stroke="#D9D6E0" strokeDasharray="4 4" strokeWidth={1} />}
+      <polyline points={line} fill="none" stroke={BURGUNDY} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+      {pts.map((p, i) => p.y !== null && <circle key={i} cx={p.x} cy={p.y} r={3} fill={BURGUNDY} />)}
+      {pts.map((p, i) => (i % Math.ceil(pts.length / 6) === 0) && <text key={'t' + i} x={p.x} y={h - 4} fontSize="9" fill={MUTED} textAnchor="middle">{p.label}</text>)}
+    </svg>
+  );
+}
+function SimpleBarChart({ data, colorFn }) {
+  const vals = data.map(d => d.value);
+  const max = Math.max(...vals, 1);
+  const w = 440, h = 180, pad = 20, gap = 6;
+  const barW = (w - pad * 2) / data.length - gap;
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', height: 180 }}>
+      {data.map((d, i) => {
+        const barH = (d.value / max) * (h - pad * 2);
+        const x = pad + i * ((w - pad * 2) / data.length) + gap / 2;
+        const y = h - pad - barH;
+        return (
+          <g key={i}>
+            <rect x={x} y={y} width={barW} height={barH} rx={3} fill={colorFn ? colorFn(d) : BURGUNDY} />
+            <text x={x + barW / 2} y={h - 4} fontSize="9" fill={MUTED} textAnchor="middle">{d.label}</text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+const METRICS = [
+  { key: 'calories', label: 'Calories', kind: 'ceiling' },
+  { key: 'protein', label: 'Protein', kind: 'floor' },
+  { key: 'netCarbs', label: 'Net Carbs', kind: 'ceiling' },
+  { key: 'fat', label: 'Fat', kind: 'floor' },
+  { key: 'weight', label: 'Weight', kind: null },
+];
+
+function EntryHistoryModal({ title, entries, renderRow, onClose }) {
+  const sorted = [...entries].sort((a, b) => b.date.localeCompare(a.date));
+  return (
+    <Modal title={title} onClose={onClose}>
+      {sorted.length === 0 ? (
+        <div style={{ color: MUTED, fontSize: 13 }}>Nothing logged yet.</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {sorted.map((e, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: `1px solid ${BORDER}` }}>
+              <span style={{ fontSize: 12.5, color: MUTED }}>{e.date}</span>
+              <span style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>{renderRow(e)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function HistoryModal({ targets, weightLog, onClose }) {
+  const [metric, setMetric] = useState('calories');
+  const [range, setRange] = useState('week');
+  const [view, setView] = useState('trend');
+  const [chartData, setChartData] = useState(null);
+
+  const runQuery = () => {
+    const days = range === 'week' ? 7 : 30;
+    const dates = [...Array(days)].map((_, i) => iso(addDays(new Date(), -(days - 1 - i))));
+    let series;
+    if (metric === 'weight') {
+      const map = Object.fromEntries(weightLog.map(w => [w.date, w.weight]));
+      series = dates.map(d => ({ date: d, value: map[d] ?? null }));
+    } else {
+      series = dates.map(d => {
+        const parsed = load(DAY_KEY(d), null);
+        if (!parsed) return { date: d, value: 0 };
+        const foods = Object.values(parsed.meals || {}).flat();
+        const t = foods.reduce((acc, f) => { const e = effective(f); return { calories: acc.calories + e.calories, protein: acc.protein + e.protein, netCarbs: acc.netCarbs + Math.max(0, e.carbs - e.fiber), fat: acc.fat + e.fat }; }, { calories: 0, protein: 0, netCarbs: 0, fat: 0 });
+        return { date: d, value: t[metric] };
+      });
+    }
+    const target = metric === 'weight' ? null : targets[metric];
+    const kind = METRICS.find(m => m.key === metric).kind;
+    let output;
+    if (view === 'trend') output = series.map(s => ({ label: s.date.slice(5), value: s.value }));
+    else if (view === 'averages') {
+      const chunks = []; for (let i = 0; i < series.length; i += 7) chunks.push(series.slice(i, i + 7));
+      output = chunks.map((c, i) => { const vals = c.map(x => x.value).filter(v => v !== null); const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0; return { label: `Wk ${i + 1}`, value: Math.round(avg * 10) / 10 }; });
+    } else {
+      output = series.map(s => ({ label: s.date.slice(5), value: s.value ?? 0, met: target ? (kind === 'floor' ? s.value >= target : s.value <= target) : null }));
+    }
+    setChartData({ output, target, kind });
+  };
+
+  return (
+    <Modal title="History" onClose={onClose}>
+      <Field label="Metric"><select value={metric} onChange={e => { setMetric(e.target.value); setChartData(null); }}>{METRICS.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}</select></Field>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <Field label="Range"><select value={range} onChange={e => { setRange(e.target.value); setChartData(null); }}><option value="week">Week</option><option value="month">Month</option></select></Field>
+        <Field label="View"><select value={view} onChange={e => { setView(e.target.value); setChartData(null); }}><option value="trend">Daily trend</option><option value="averages">Weekly averages</option><option value="adherence">Adherence</option></select></Field>
+      </div>
+      <PrimaryButton onClick={runQuery} label="Show Graph" />
+      {chartData && (
+        <div style={{ marginTop: 20 }}>
+          {view === 'trend' ? (
+            <SimpleLineChart data={chartData.output} target={chartData.target} />
+          ) : (
+            <SimpleBarChart data={chartData.output} colorFn={view === 'adherence' ? (d => d.met === null ? BURGUNDY : (d.met ? BLUE : RED)) : null} />
+          )}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<CarbTrack />);
+</script>
+<script>
+  var code = document.getElementById('app-source').textContent;
+  var output = Babel.transform(code, { presets: [['react', { runtime: 'classic' }]] }).code;
+  (0, eval)(output);
+</script>
+</body>
+</html>
