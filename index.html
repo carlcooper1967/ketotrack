@@ -27,6 +27,7 @@
   .dark-mode { --card-bg: #22262A; --text-color: #E8E6E3; --muted-color: #9CA3AF; --border-color: #3A3F44; --track-bg: #2E3338; --input-bg: #2E3338; --label-color: #D9D6DA; }
   .dark-mode .ghostbtn { background: var(--input-bg); }
   .dark-mode .banner { background: var(--input-bg); }
+  @media (max-width: 380px) { .wx-word { display: none; } }
   .confetti-piece { position: fixed; top: -20px; width: 8px; height: 14px; opacity: 0.9; z-index: 999; animation: confetti-fall linear forwards; }
   @keyframes confetti-fall {
     0% { transform: translateY(0) rotate(0deg); opacity: 1; }
@@ -62,7 +63,7 @@ const MEALS = [
   { key: 'snacks', label: 'Snacks', emoji: '🍪' },
 ];
 
-const BUILD_NUMBER = 38;
+const BUILD_NUMBER = 39;
 const DEFAULT_TARGETS = { calories: 1800, protein: 90, netCarbs: 25, fat: 150, water: 100 };
 const LEVELS = [1, 2, 3].map((num, i) => {
   const carbs = [20, 50, 100][i];
@@ -79,7 +80,7 @@ const save = (key, value) => {
   try { localStorage.setItem(key, JSON.stringify(value)); queueSyncOp(key, JSON.stringify(value), false); } catch (e) { console.error('save failed', e); }
 };
 const DAY_KEY = (d) => `kt-day-${d}`;
-const EMPTY_DAY = { meals: { breakfast: [], lunch: [], dinner: [], snacks: [] }, workouts: [], water: 0 };
+const EMPTY_DAY = { meals: { breakfast: [], lunch: [], dinner: [], snacks: [] }, workouts: [], water: 0, waterLog: [] };
 
 // ---------- Duration helpers (MM:SS) ----------
 // Stored value is always decimal minutes (e.g. 32.75). The entry field accepts "32:45", "1:05:30" or plain minutes.
@@ -149,6 +150,76 @@ const isDarkAt = (ms) => {
   return ms < t.sunrise || ms > t.sunset;
 };
 
+// ---------- Weather (Open-Meteo, fixed North Texas location, no key, no location permission) ----------
+const WX_KEY = 'kt-weather-cache';
+const WX_URL = 'https://api.open-meteo.com/v1/forecast?latitude=' + SUN_LAT + '&longitude=' + SUN_LNG
+  + '&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,is_day'
+  + '&hourly=temperature_2m,weather_code,precipitation_probability,is_day'
+  + '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max'
+  + '&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America%2FChicago&forecast_days=6';
+const wxInfo = (code, isDay) => {
+  const day = isDay !== 0;
+  if (code === 0) return day ? { icon: '☀️', word: 'Sunny', short: 'Sunny' } : { icon: '🌙', word: 'Clear', short: 'Clear' };
+  if (code === 1) return day ? { icon: '🌤️', word: 'Mostly sunny', short: 'Sunny' } : { icon: '🌙', word: 'Mostly clear', short: 'Clear' };
+  if (code === 2) return { icon: '⛅', word: 'Partly cloudy', short: 'Pt Cloudy' };
+  if (code === 3) return { icon: '☁️', word: 'Cloudy', short: 'Cloudy' };
+  if (code === 45 || code === 48) return { icon: '🌫️', word: 'Fog', short: 'Fog' };
+  if (code >= 51 && code <= 57) return { icon: '🌦️', word: 'Drizzle', short: 'Drizzle' };
+  if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) return { icon: '🌧️', word: 'Rain', short: 'Rain' };
+  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return { icon: '❄️', word: 'Snow', short: 'Snow' };
+  if (code >= 95) return { icon: '⛈️', word: 'Storms', short: 'Storms' };
+  return { icon: '☁️', word: 'Cloudy', short: 'Cloudy' };
+};
+const centralISO = (ms) => {
+  const { y, m, d } = centralYMD(ms);
+  return y + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+};
+const centralHourStr = (ms) => {
+  const h = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour: '2-digit', hourCycle: 'h23' }).format(new Date(ms));
+  return centralISO(ms) + 'T' + String(parseInt(h, 10) % 24).padStart(2, '0') + ':00';
+};
+const wxSummary = (w) => {
+  if (!w || !w.current || !w.daily || !Array.isArray(w.daily.time)) return null;
+  if (Date.now() - (w.fetchedAt || 0) > 6 * 3600000) return null; // too old to show as "current"
+  const c = w.current;
+  if (typeof c.temperature_2m !== 'number') return null;
+  const info = wxInfo(c.weather_code, c.is_day);
+  const idx = w.daily.time.indexOf(centralISO(Date.now()));
+  const num = (arr) => (idx >= 0 && arr && typeof arr[idx] === 'number') ? Math.round(arr[idx]) : null;
+  return { icon: info.icon, word: info.word, short: info.short, temp: Math.round(c.temperature_2m), hi: num(w.daily.temperature_2m_max), lo: num(w.daily.temperature_2m_min), idx };
+};
+
+// ---------- Hydration log (each day keeps a list of entries; day.water stays the running total) ----------
+const r1 = (x) => Math.round(x * 10) / 10;
+const fmtOz = (x) => String(r1(x));
+const waterLogOf = (day) => Array.isArray(day && day.waterLog) ? day.waterLog : [];
+const waterLogSum = (day) => waterLogOf(day).reduce((sum, e) => sum + (Number(e.oz) || 0), 0);
+// anything in the total that has no entry behind it (days logged before the history feature existed)
+const waterBaseOf = (day) => { const b = r1((Number(day && day.water) || 0) - waterLogSum(day)); return Math.abs(b) < 0.05 ? 0 : b; };
+const withWaterEntry = (day, oz, src, at, noTime) => {
+  const cur = Number(day.water) || 0;
+  const amt = Math.max(oz, -cur); // never take the total below zero
+  if (!amt) return day;
+  const entry = { id: Date.now() + Math.random(), t: at || Date.now(), oz: amt, src: src || 'manual' };
+  if (noTime) entry.nt = 1;
+  return { ...day, waterLog: [...waterLogOf(day), entry], water: r1(cur + amt) };
+};
+const editWaterEntry = (day, id, newOz) => {
+  const cur = Number(day.water) || 0;
+  if (id === 'base') return { ...day, waterLog: waterLogOf(day), water: Math.max(0, r1(waterLogSum(day) + Math.max(0, newOz))) };
+  const old = waterLogOf(day).find(e => e.id === id);
+  if (!old) return day;
+  if (!newOz) return removeWaterEntry(day, id);
+  return { ...day, waterLog: waterLogOf(day).map(e => e.id === id ? { ...e, oz: newOz } : e), water: Math.max(0, r1(cur + newOz - old.oz)) };
+};
+const removeWaterEntry = (day, id) => {
+  const cur = Number(day.water) || 0;
+  if (id === 'base') return { ...day, waterLog: waterLogOf(day), water: Math.max(0, r1(waterLogSum(day))) };
+  const old = waterLogOf(day).find(e => e.id === id);
+  if (!old) return day;
+  return { ...day, waterLog: waterLogOf(day).filter(e => e.id !== id), water: Math.max(0, r1(cur - old.oz)) };
+};
+
 // ---------- Vacation mode ----------
 const EMPTY_VACATION = { on: false, startDate: null, endDate: null, ranges: [] };
 const normalizeVacation = (v) => {
@@ -177,7 +248,7 @@ let syncPushTimer = null;
 
 // Local-only UI preference state — never synced to the cloud, so a stale cloud copy can never
 // silently un-dismiss a banner or reset a local-only flag on this or another device.
-const LOCAL_ONLY_KEYS = ['kt-dismissed'];
+const LOCAL_ONLY_KEYS = ['kt-dismissed', 'kt-weather-cache'];
 
 const queueSyncOp = (key, value, deleted) => {
   if (key === SYNC_QUEUE_KEY || key === DEVICE_ID_KEY || LOCAL_ONLY_KEYS.includes(key)) return;
@@ -262,7 +333,7 @@ const effective = (f) => {
 };
 
 // ---------- UI atoms ----------
-function HydrationCard({ water, target, onAdd, gold, neutral }) {
+function HydrationCard({ water, target, onAdd, gold, neutral, onOpenLog }) {
   const [val, setVal] = useState('');
   const [mode, setMode] = useState('add'); // 'add' | 'subtract'
   const color = neutral ? TEXT : statColor(water, target, 'floor');
@@ -281,6 +352,7 @@ function HydrationCard({ water, target, onAdd, gold, neutral }) {
     <div className={gold ? 'card gold-card' : 'card'} style={{ padding: 14 }}>
       <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 12, letterSpacing: '0.05em', textTransform: 'uppercase', color: LABEL, fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
         💧 Hydration{gold && <span style={{ fontSize: 10, color: '#8A6D1D', fontWeight: 700 }}>🔥 7-day streak</span>}
+        <button onClick={onOpenLog} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: gold ? '#5E4A12' : LABEL, fontSize: 11.5, fontWeight: 600, textTransform: 'none', letterSpacing: 0, padding: '2px 0' }}>History ›</button>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
         <div style={{ display: 'flex', gap: 6, flex: '1 1 170px', minWidth: 170 }}>
@@ -288,7 +360,7 @@ function HydrationCard({ water, target, onAdd, gold, neutral }) {
           <input type="number" inputMode="decimal" value={val} onChange={e => setVal(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} placeholder="oz" style={{ width: 64 }} />
           <button onClick={submit} style={{ background: mode === 'subtract' ? RED : BURGUNDY, border: 'none', borderRadius: 9, padding: '10px 12px', color: WHITE, fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap' }}>{mode === 'subtract' ? 'Subtract' : '+ Add'}</button>
         </div>
-        <div style={{ textAlign: 'right' }}>
+        <div onClick={onOpenLog} style={{ textAlign: 'right', cursor: 'pointer' }}>
           <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 26, fontWeight: 700, color, lineHeight: 1, whiteSpace: 'nowrap' }}>{Math.round(water)}<span style={{ fontSize: 12, color: MUTED, fontWeight: 500 }}> oz</span></div>
           <div style={{ fontSize: 11, color: MUTED, marginTop: 2, whiteSpace: 'nowrap' }}>goal {target} oz</div>
         </div>
@@ -445,6 +517,12 @@ function CarbTrack() {
   const [showBpForm, setShowBpForm] = useState(false);
   const [showMeasureForm, setShowMeasureForm] = useState(false);
   const [showSleepForm, setShowSleepForm] = useState(false);
+  const [showWaterLog, setShowWaterLog] = useState(false);
+  const [showWeather, setShowWeather] = useState(false);
+  const [dataRev, setDataRev] = useState(0);
+  const [weather, setWeather] = useState(() => { try { return JSON.parse(localStorage.getItem(WX_KEY) || 'null'); } catch (e) { return null; } });
+  const wxAt = useRef(0);
+  const wxBusy = useRef(false);
   const [editSleep, setEditSleep] = useState(null);
   const [showWorkoutAi, setShowWorkoutAi] = useState(false);
   const [showTrainingType, setShowTrainingType] = useState(false);
@@ -640,7 +718,8 @@ function CarbTrack() {
   const addFoodBatch = (mealKey, foods, estimated) => {
     const stamped = foods.map(f => ({ ...f, id: Date.now() + Math.random(), percent: 100, estimated: !!estimated }));
     const hydrationAdd = foods.reduce((sum, f) => sum + (f.hydrationOz || 0), 0);
-    const next = { ...dayData, meals: { ...dayData.meals, [mealKey]: [...dayData.meals[mealKey], ...stamped] }, water: Math.max(0, dayData.water + hydrationAdd) };
+    let next = { ...dayData, meals: { ...dayData.meals, [mealKey]: [...dayData.meals[mealKey], ...stamped] } };
+    foods.forEach(f => { if (f.hydrationOz) next = withWaterEntry(next, f.hydrationOz, f.name || 'Food'); });
     persistDay(next);
     let cf = commonFoods;
     foods.forEach(f => { cf = recordCommonFood(f, cf); });
@@ -774,7 +853,7 @@ function CarbTrack() {
 
   const addWorkout = (w) => persistDay({ ...dayData, workouts: [...dayData.workouts, { ...w, id: Date.now() }] });
   const removeWorkout = (id) => persistDay({ ...dayData, workouts: dayData.workouts.filter(w => w.id !== id) });
-  const addWater = (amt) => persistDay({ ...dayData, water: Math.max(0, dayData.water + amt) });
+  const addWater = (amt) => persistDay(withWaterEntry(dayData, amt, 'manual'));
 
   const latestWeight = weightLog.length ? weightLog[weightLog.length - 1].weight : null;
   const startWeight = weightLog.length ? weightLog[0].weight : null;
@@ -855,7 +934,7 @@ function CarbTrack() {
     fat: computeCategoryStreak(p => dayMacroTotals(p).fat, targets.fat, 'floor'),
     hydration: computeCategoryStreak(p => p.water || 0, targets.water, 'floor'),
     training: computeCategoryStreak(p => (p.workouts || []).length > 0, null, 'any'),
-  }), [dayData, targets, vacation]);
+  }), [dayData, targets, vacation, dataRev]);
 
   const goldCards = useMemo(() => vacationActive ? { protein: false, netCarbs: false, calories: false, fat: false, hydration: false, training: false } : ({
     protein: streaks.protein >= 7, netCarbs: streaks.netCarbs >= 7, calories: streaks.calories >= 7,
@@ -917,6 +996,30 @@ function CarbTrack() {
     const interval = setInterval(update, 5 * 60 * 1000); // re-check so it flips live across sunrise/sunset
     return () => clearInterval(interval);
   }, [loaded, nightModeSetting]);
+
+  // ---------- Weather: fixed North Texas location, fetched straight from Open-Meteo ----------
+  const fetchWeather = async () => {
+    if (wxBusy.current) return;
+    wxBusy.current = true;
+    try {
+      const res = await fetch(WX_URL);
+      if (!res.ok) return;
+      const j = await res.json();
+      if (!j || !j.current || !j.daily || !j.hourly) return;
+      const data = { fetchedAt: Date.now(), current: j.current, hourly: j.hourly, daily: j.daily };
+      try { localStorage.setItem(WX_KEY, JSON.stringify(data)); } catch (e) {}
+      wxAt.current = data.fetchedAt;
+      setWeather(data);
+    } catch (e) { /* offline: keep showing the last reading */ }
+    finally { wxBusy.current = false; }
+  };
+  useEffect(() => {
+    fetchWeather();
+    const interval = setInterval(fetchWeather, 30 * 60 * 1000);
+    const onVisible = () => { if (document.visibilityState === 'visible' && Date.now() - wxAt.current > 15 * 60 * 1000) fetchWeather(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVisible); };
+  }, []);
 
   // ---------- Smart Coach: weekly AI recap ----------
   const getAllTrainingHistory = () => {
@@ -1112,7 +1215,10 @@ function CarbTrack() {
             <img src="/leaf-icon.png" alt="" style={{ width: 26, height: 'auto' }} />
             <h1 style={{ fontFamily: "'Oswald', sans-serif", fontSize: 22, fontWeight: 700, margin: 0, color: WHITE, letterSpacing: '-0.01em' }}>CarbTrack</h1>
           </div>
-          <button onClick={() => setShowSettings(true)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 8, padding: '8px 10px', color: WHITE, fontSize: 15 }}>⚙</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <WeatherTile weather={weather} onOpen={() => setShowWeather(true)} />
+            <button onClick={() => setShowSettings(true)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 8, padding: '8px 10px', color: WHITE, fontSize: 15 }}>⚙</button>
+          </div>
         </div>
 
         <div style={{ maxWidth: 480, margin: '18px auto 0', display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -1219,7 +1325,7 @@ function CarbTrack() {
             note={streaks.fat > 1 ? `🔥${streaks.fat}d` : null} />
         </div>
 
-        <HydrationCard water={dayData.water} target={targets.water} onAdd={addWater} gold={goldCards.hydration} neutral={vacationActive} />
+        <HydrationCard water={dayData.water} target={targets.water} onAdd={addWater} gold={goldCards.hydration} neutral={vacationActive} onOpenLog={() => setShowWaterLog(true)} />
 
         <button onClick={() => setShowRegulars(true)} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: `1px solid ${BORDER}`, width: '100%', textAlign: 'left' }}>
           <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 13, letterSpacing: '0.05em', textTransform: 'uppercase', color: LABEL, fontWeight: 600 }}>⭐ Frequent Foods</span>
@@ -1415,6 +1521,11 @@ function CarbTrack() {
       {showWeightForm && <WeightModal onClose={() => setShowWeightForm(false)} onSave={(entry) => { persistWeight([...weightLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowWeightForm(false); }} />}
       {showBpForm && <BpModal onClose={() => setShowBpForm(false)} onSave={(entry) => { persistBp([...bpLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowBpForm(false); }} />}
       {showMeasureForm && <MeasureModal onClose={() => setShowMeasureForm(false)} onSave={(entry) => { persistMeasure([...measureLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowMeasureForm(false); }} />}
+      {showWaterLog && <HydrationLogModal startDate={selectedDate} target={targets.water}
+        getDay={(d) => d === selectedDate ? dayData : load(DAY_KEY(d), EMPTY_DAY)}
+        setDay={(d, next) => { if (d === selectedDate) persistDay(next); else { save(DAY_KEY(d), next); setDataRev(r => r + 1); } }}
+        onClose={() => setShowWaterLog(false)} />}
+      {showWeather && weather && <WeatherPanel weather={weather} onRefresh={fetchWeather} onClose={() => setShowWeather(false)} />}
       {showSleepForm && <SleepModal forDate={selectedDate} onClose={() => setShowSleepForm(false)} onSave={(entry) => { persistSleep([...sleepLog, entry].sort((a, b) => a.date.localeCompare(b.date))); setShowSleepForm(false); }} />}
       {editSleep && <SleepModal initial={editSleep} onClose={() => setEditSleep(null)} onSave={(entry) => { updateSleep(entry.id, entry); setEditSleep(null); }} />}
       {showWorkoutAi && <WorkoutAiModal initialType={pendingTrainingType} onClose={() => { setShowWorkoutAi(false); setPendingTrainingType(null); }} onSave={(w) => { addWorkout(w); setShowWorkoutAi(false); setPendingTrainingType(null); }} />}
@@ -2550,6 +2661,199 @@ function MeasureModal({ onClose, onSave }) {
         <Field label="Thighs (in)"><input type="number" inputMode="decimal" value={m.thighs} onChange={e => setM({ ...m, thighs: e.target.value })} /></Field>
       </div>
       <PrimaryButton onClick={submit} />
+    </Modal>
+  );
+}
+
+function WeatherTile({ weather, onOpen }) {
+  const w = wxSummary(weather);
+  if (!w) return null;
+  return (
+    <button onClick={onOpen} aria-label="Weather details" style={{ display: 'flex', alignItems: 'center', gap: 7, background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 10, padding: '4px 9px', color: WHITE, textAlign: 'left' }}>
+      <span style={{ fontSize: 21, lineHeight: 1 }}>{w.icon}</span>
+      <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
+        <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700 }}>{w.temp}°</span>
+        <span className="wx-word" style={{ fontSize: 10, color: 'rgba(255,255,255,0.75)', whiteSpace: 'nowrap' }}>{w.short}</span>
+      </span>
+      {w.hi !== null && w.lo !== null && (
+        <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.15, fontSize: 10.5, color: 'rgba(255,255,255,0.85)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+          <span>H {w.hi}°</span><span>L {w.lo}°</span>
+        </span>
+      )}
+    </button>
+  );
+}
+
+function WeatherPanel({ weather, onClose, onRefresh }) {
+  const c = weather.current, d = weather.daily, h = weather.hourly;
+  const info = wxInfo(c.weather_code, c.is_day);
+  const todayStr = centralISO(Date.now());
+  const idx = d.time.indexOf(todayStr);
+  const pick = (arr, i) => (arr && typeof arr[i] === 'number') ? arr[i] : null;
+  const hi = idx >= 0 ? pick(d.temperature_2m_max, idx) : null;
+  const lo = idx >= 0 ? pick(d.temperature_2m_min, idx) : null;
+  const rainToday = idx >= 0 ? pick(d.precipitation_probability_max, idx) : null;
+  const nowHour = centralHourStr(Date.now());
+  const hs = h.time.findIndex(t => t >= nowHour);
+  const hours = hs < 0 ? [] : h.time.slice(hs, hs + 8).map((t, i) => ({
+    t, temp: pick(h.temperature_2m, hs + i), code: h.weather_code ? h.weather_code[hs + i] : 3,
+    isDay: h.is_day ? h.is_day[hs + i] : 1, pop: pick(h.precipitation_probability, hs + i), now: i === 0,
+  }));
+  const days = d.time.map((t, i) => ({ t, code: d.weather_code[i], hi: pick(d.temperature_2m_max, i), lo: pick(d.temperature_2m_min, i), pop: pick(d.precipitation_probability_max, i) }))
+    .filter(x => x.t > todayStr).slice(0, 5);
+  const sun = sunTimesAt(Date.now());
+  const fmtSun = (ms) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' });
+  const hourLabel = (t) => { const hh = parseInt(t.slice(11, 13), 10); return (hh % 12 || 12) + ' ' + (hh < 12 ? 'AM' : 'PM'); };
+  const dayLabel2 = (t) => new Date(t + 'T12:00:00').toLocaleDateString([], { weekday: 'short' });
+  const updated = new Date(weather.fetchedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const statBox = (label, value) => (
+    <div style={{ flex: 1, background: 'var(--input-bg)', border: `1px solid ${BORDER}`, borderRadius: 10, padding: '9px 6px', textAlign: 'center' }}>
+      <div style={{ fontSize: 10.5, color: MUTED, fontWeight: 600, marginBottom: 3 }}>{label}</div>
+      <div style={{ fontSize: 14, color: TEXT, fontWeight: 700 }}>{value}</div>
+    </div>
+  );
+  return (
+    <Modal title="Weather · North Texas" onClose={onClose}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+        <span style={{ fontSize: 46, lineHeight: 1 }}>{info.icon}</span>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 38, fontWeight: 700, color: TEXT, lineHeight: 1 }}>{Math.round(c.temperature_2m)}°</div>
+          <div style={{ fontSize: 13, color: MUTED, marginTop: 3 }}>{info.word}{typeof c.apparent_temperature === 'number' ? ` · Feels like ${Math.round(c.apparent_temperature)}°` : ''}</div>
+        </div>
+        {hi !== null && lo !== null && (
+          <div style={{ textAlign: 'right', fontSize: 13, fontWeight: 600, color: TEXT, lineHeight: 1.4 }}><div>H {Math.round(hi)}°</div><div style={{ color: MUTED }}>L {Math.round(lo)}°</div></div>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+        {statBox('Wind', typeof c.wind_speed_10m === 'number' ? `${Math.round(c.wind_speed_10m)} mph` : '-')}
+        {statBox('Humidity', typeof c.relative_humidity_2m === 'number' ? `${Math.round(c.relative_humidity_2m)}%` : '-')}
+        {statBox('Rain today', rainToday !== null ? `${Math.round(rainToday)}%` : '-')}
+      </div>
+      {sun && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+          {statBox('🌅 Sunrise', fmtSun(sun.sunrise))}
+          {statBox('🌇 Sunset', fmtSun(sun.sunset))}
+        </div>
+      )}
+
+      {hours.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 12, letterSpacing: '0.05em', textTransform: 'uppercase', color: LABEL, fontWeight: 600, marginBottom: 8 }}>Next hours</div>
+          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
+            {hours.map(x => (
+              <div key={x.t} style={{ flex: '0 0 auto', minWidth: 54, textAlign: 'center', background: 'var(--input-bg)', border: `1px solid ${BORDER}`, borderRadius: 10, padding: '8px 6px' }}>
+                <div style={{ fontSize: 10.5, color: MUTED, fontWeight: 600 }}>{x.now ? 'Now' : hourLabel(x.t)}</div>
+                <div style={{ fontSize: 20, margin: '4px 0' }}>{wxInfo(x.code, x.isDay).icon}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>{x.temp !== null ? Math.round(x.temp) + '°' : '-'}</div>
+                <div style={{ fontSize: 10, color: BLUE, minHeight: 12 }}>{x.pop !== null && x.pop >= 20 ? `${Math.round(x.pop)}%` : ''}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {days.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 12, letterSpacing: '0.05em', textTransform: 'uppercase', color: LABEL, fontWeight: 600, marginBottom: 6 }}>Next 5 days</div>
+          {days.map(x => (
+            <div key={x.t} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: `1px solid ${BORDER}` }}>
+              <span style={{ width: 38, fontSize: 13, fontWeight: 600, color: TEXT }}>{dayLabel2(x.t)}</span>
+              <span style={{ fontSize: 20 }}>{wxInfo(x.code, 1).icon}</span>
+              <span style={{ flex: 1, fontSize: 12, color: MUTED }}>{wxInfo(x.code, 1).word}{x.pop !== null && x.pop >= 20 ? ` · ${Math.round(x.pop)}% rain` : ''}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>{x.hi !== null ? Math.round(x.hi) + '°' : '-'}</span>
+              <span style={{ fontSize: 13, color: MUTED, width: 34, textAlign: 'right' }}>{x.lo !== null ? Math.round(x.lo) + '°' : '-'}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: 11, color: MUTED }}>Updated {updated}</span>
+        <button className="ghostbtn" onClick={onRefresh}>↻ Refresh</button>
+      </div>
+    </Modal>
+  );
+}
+
+function HydrationLogModal({ startDate, target, getDay, setDay, onClose }) {
+  const today = todayISO();
+  const [date, setDate] = useState(startDate);
+  const [day, setDayView] = useState(() => getDay(startDate));
+  const [editId, setEditId] = useState(null);
+  const [editVal, setEditVal] = useState('');
+  const [addVal, setAddVal] = useState('');
+  useEffect(() => { setDayView(getDay(date)); setEditId(null); setAddVal(''); }, [date]);
+
+  const commit = (next) => { setDayView(next); setDay(date, next); };
+  const shift = (n) => { const nd = iso(addDays(new Date(date + 'T00:00:00'), n)); if (nd <= today) setDate(nd); };
+  const log = waterLogOf(day).slice().sort((a, b) => (b.t || 0) - (a.t || 0));
+  const base = waterBaseOf(day);
+  const total = Number(day.water) || 0;
+  const dateLabel = date === today ? 'Today' : new Date(date + 'T00:00:00').toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+
+  const addEntry = () => {
+    const n = parseFloat(addVal);
+    if (!n || n <= 0) return;
+    const past = date !== today;
+    commit(withWaterEntry(day, n, 'manual', past ? new Date(date + 'T12:00:00').getTime() : Date.now(), past));
+    setAddVal('');
+  };
+  const startEdit = (id, oz) => { setEditId(id); setEditVal(fmtOz(oz)); };
+  const saveEdit = () => {
+    const n = parseFloat(editVal);
+    if (isNaN(n)) return;
+    commit(editWaterEntry(day, editId, n));
+    setEditId(null);
+  };
+
+  const smallBtn = { background: 'var(--input-bg)', border: `1px solid ${BORDER}`, borderRadius: 8, padding: '6px 9px', fontSize: 13, color: LABEL, fontWeight: 600 };
+  const row = (id, left, sub, oz) => (
+    <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 0', borderBottom: `1px solid ${BORDER}` }}>
+      {editId === id ? (
+        <>
+          <div style={{ flex: 1, fontSize: 12.5, color: MUTED }}>{left}</div>
+          <input type="number" inputMode="decimal" value={editVal} onChange={e => setEditVal(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveEdit()} style={{ width: 74 }} autoFocus />
+          <button onClick={saveEdit} style={{ ...smallBtn, background: BURGUNDY, border: `1px solid ${BURGUNDY}`, color: WHITE }}>Save</button>
+          <button onClick={() => setEditId(null)} style={smallBtn}>✕</button>
+        </>
+      ) : (
+        <>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, color: TEXT, fontWeight: 600 }}>{left}</div>
+            {sub && <div style={{ fontSize: 11, color: MUTED, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</div>}
+          </div>
+          <div style={{ fontFamily: "'Oswald', sans-serif", fontSize: 17, fontWeight: 700, color: oz < 0 ? RED : TEXT, whiteSpace: 'nowrap' }}>{oz > 0 ? '+' : ''}{fmtOz(oz)}<span style={{ fontSize: 11, color: MUTED, fontWeight: 500 }}> oz</span></div>
+          <button onClick={() => startEdit(id, oz)} aria-label="Edit entry" style={smallBtn}>✎</button>
+          <button onClick={() => commit(removeWaterEntry(day, id))} aria-label="Delete entry" style={smallBtn}>🗑</button>
+        </>
+      )}
+    </div>
+  );
+
+  return (
+    <Modal title="Hydration Log" onClose={onClose}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <button onClick={() => shift(-1)} aria-label="Previous day" style={{ ...smallBtn, fontSize: 16, padding: '4px 12px' }}>‹</button>
+        <span style={{ fontSize: 14, fontWeight: 700, color: TEXT }}>{dateLabel}</span>
+        <button onClick={() => shift(1)} disabled={date >= today} aria-label="Next day" style={{ ...smallBtn, fontSize: 16, padding: '4px 12px', opacity: date >= today ? 0.35 : 1 }}>›</button>
+      </div>
+      <div style={{ textAlign: 'center', marginBottom: 12 }}>
+        <span style={{ fontFamily: "'Oswald', sans-serif", fontSize: 34, fontWeight: 700, color: total >= target ? BLUE : RED }}>{fmtOz(total)}</span>
+        <span style={{ fontSize: 13, color: MUTED }}> oz of {target} oz</span>
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+        <input type="number" inputMode="decimal" value={addVal} onChange={e => setAddVal(e.target.value)} onKeyDown={e => e.key === 'Enter' && addEntry()} placeholder={date === today ? 'Add oz' : 'Add oz to this day'} style={{ flex: 1 }} />
+        <button onClick={addEntry} style={{ background: BURGUNDY, border: 'none', borderRadius: 9, padding: '10px 16px', color: WHITE, fontWeight: 700, fontSize: 13 }}>+ Add</button>
+      </div>
+      <div style={{ marginBottom: 8 }}>
+        {log.length === 0 && base <= 0 && <div style={{ fontSize: 12.5, color: MUTED, padding: '14px 0', textAlign: 'center' }}>No water logged this day.</div>}
+        {log.map(e => row(e.id,
+          e.nt ? 'Added later' : new Date(e.t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+          e.src && e.src !== 'manual' ? 'from ' + e.src : null,
+          Number(e.oz) || 0))}
+        {base > 0 && row('base', 'Earlier total', 'Logged before history was added', base)}
+      </div>
     </Modal>
   );
 }
